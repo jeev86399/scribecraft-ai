@@ -4,6 +4,7 @@ import {
   rewriteText, 
   paraphraseText, 
   detectAI, 
+  humanizeText,
   getAIDetectionHistory, 
   deleteAIDetectionHistory 
 } from '../controllers/analysisController.js';
@@ -23,6 +24,7 @@ router.post('/analyze', optionalAuth, analyzeText);
 router.post('/rewrite', optionalAuth, rewriteText);
 router.post('/paraphrase', optionalAuth, paraphraseText);
 router.post('/detect-ai', optionalAuth, detectAI);
+router.post('/humanize', optionalAuth, humanizeText);
 
 router.get('/detect-ai/history', authenticateToken, getAIDetectionHistory);
 router.delete('/detect-ai/history/:id', authenticateToken, deleteAIDetectionHistory);

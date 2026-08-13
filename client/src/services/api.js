@@ -46,11 +46,12 @@ export const api = {
   getDocumentHistory: (id) => request(`/documents/${id}/history`),
   restoreRevision: (id, revisionId) => request(`/documents/${id}/history/${revisionId}/restore`, { method: 'POST' }),
 
-  // Analysis & AI
+  // Analysis, Paraphrase, AI Detection & Humanizer
   analyzeText: (text) => request('/analysis/analyze', { method: 'POST', body: JSON.stringify({ text }) }),
   rewriteText: (text, goal, targetTone) => request('/analysis/rewrite', { method: 'POST', body: JSON.stringify({ text, goal, targetTone }) }),
   paraphrase: (text, mode) => request('/analysis/paraphrase', { method: 'POST', body: JSON.stringify({ text, mode }) }),
   detectAI: (text) => request('/analysis/detect-ai', { method: 'POST', body: JSON.stringify({ text }) }),
+  humanizeText: (text) => request('/analysis/humanize', { method: 'POST', body: JSON.stringify({ text }) }),
   getAIDetectionHistory: () => request('/analysis/detect-ai/history'),
   deleteAIDetectionHistory: (id) => request(`/analysis/detect-ai/history/${id}`, { method: 'DELETE' }),
 

@@ -1,6 +1,6 @@
 /**
- * Phrase Predictability & Transition Regularity Analyzer (Signals 5 & 8)
- * Scans for formulaic clichés, overused LLM transition markers, and predictable connective placement.
+ * Phrase Predictability & Continuation Structure Analyzer (Signals 5 & 8)
+ * Evaluates overused LLM clichés, transition placement, templated contrast, and expository continuation patterns.
  */
 
 const FORMULAIC_AI_PHRASES = [
@@ -22,13 +22,25 @@ const FORMULAIC_AI_PHRASES = [
   'paradigm shift',
   'beacon of hope',
   'the rapid advancement of',
-  'in an increasingly interconnected'
+  'in an increasingly interconnected',
+  'stems from the fact that',
+  'a double-edged sword',
+  'game-changer in the field'
 ];
 
 const CONNECTIVE_TRANSITIONS = [
   'however', 'moreover', 'furthermore', 'additionally', 'consequently',
   'therefore', 'in conclusion', 'nonetheless', 'accordingly', 'overall',
-  'firstly', 'secondly', 'thirdly', 'finally'
+  'firstly', 'secondly', 'thirdly', 'finally', 'on the other hand', 'in contrast'
+];
+
+const TEMPLATED_CONTRASTS = [
+  'on the one hand',
+  'on the other hand',
+  'while it is true',
+  'at the same time',
+  'despite these challenges',
+  'nevertheless'
 ];
 
 export function analyzePredictability(preprocessed) {
@@ -61,38 +73,46 @@ export function analyzePredictability(preprocessed) {
     }
   }
 
-  // 2. Transition Placement & Density Analysis
-  let transitionCount = 0;
-  let sentenceOpenerTransitions = 0;
+  // 2. Templated Contrast Analysis
+  let contrastCount = 0;
+  for (const contrast of TEMPLATED_CONTRASTS) {
+    if (lowerText.includes(contrast)) {
+      contrastCount++;
+      if (!detectedPhrases.includes(contrast)) {
+        detectedPhrases.push(contrast);
+      }
+    }
+  }
 
+  // 3. Sentence-Opener Transition Density Analysis
+  let sentenceOpenerTransitions = 0;
   for (const s of sentences) {
     const firstWord = s.trim().split(/\s+/)[0]?.toLowerCase().replace(/[^a-z]/g, '');
     if (CONNECTIVE_TRANSITIONS.includes(firstWord)) {
-      transitionCount++;
       sentenceOpenerTransitions++;
     }
   }
 
-  const transitionDensityPer100 = wordCount > 0 ? (transitionCount / (wordCount / 100)) : 0;
+  const transitionDensityPer100 = wordCount > 0 ? ((sentenceOpenerTransitions + contrastCount) / (wordCount / 100)) : 0;
 
-  // 3. Score Aggregation (High predictability for heavy AI formulaic usage)
+  // 4. Score Aggregation
   let signalScore = 10;
 
-  if (formulaicCount >= 3 || (sentenceOpenerTransitions >= 2 && formulaicCount >= 2)) {
-    signalScore = 95;
+  if (formulaicCount >= 3 || (sentenceOpenerTransitions >= 2 && formulaicCount >= 2) || (formulaicCount >= 2 && contrastCount >= 1)) {
+    signalScore = 90;
   } else if (formulaicCount >= 2 || (sentenceOpenerTransitions >= 2 && formulaicCount >= 1)) {
-    signalScore = 80;
-  } else if (formulaicCount === 1 || sentenceOpenerTransitions >= 2) {
-    signalScore = 60;
-  } else if (transitionCount >= 2) {
-    signalScore = 35;
+    signalScore = 75;
+  } else if (formulaicCount === 1 || sentenceOpenerTransitions >= 2 || contrastCount >= 1) {
+    signalScore = 55;
+  } else if (sentenceOpenerTransitions === 1) {
+    signalScore = 30;
   }
 
   let rating = 'Natural Phrasing';
   if (signalScore >= 75) rating = 'High Predictable Phrasing';
   else if (signalScore >= 50) rating = 'Moderate Predictability';
 
-  let explanation = 'Transitions and phrasing appear organic and natural.';
+  let explanation = 'Transitions and phrasing appear organic without overused clichés.';
   if (formulaicCount > 0) {
     explanation = `Contains ${formulaicCount} formulaic expressions (${detectedPhrases.slice(0, 3).map(p => `"${p}"`).join(', ')}) typical of AI output.`;
   } else if (sentenceOpenerTransitions >= 2) {
@@ -101,6 +121,7 @@ export function analyzePredictability(preprocessed) {
 
   return {
     formulaicPhraseCount: formulaicCount,
+    contrastCount,
     transitionDensity: Math.round(transitionDensityPer100 * 10) / 10,
     sentenceOpenerTransitions,
     detectedPhrases,

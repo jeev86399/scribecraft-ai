@@ -1,5 +1,6 @@
 import { analyzeTextService, rewriteTextService, paraphraseTextService } from '../services/aiService.js';
 import { detectAITextService } from '../services/aiDetectorEngine.js';
+import { humanizeTextService } from '../services/humanizerService.js';
 import { synchronizeSuggestions } from '../services/positionSync.js';
 import { db } from '../config/db.js';
 
@@ -112,6 +113,22 @@ export async function detectAI(req, res) {
   } catch (err) {
     console.error('AI Detection error:', err);
     return res.status(500).json({ error: 'Failed to perform AI detection.' });
+  }
+}
+
+export async function humanizeText(req, res) {
+  try {
+    const { text } = req.body;
+
+    if (text === undefined || text === null || typeof text !== 'string') {
+      return res.status(400).json({ error: 'Text to humanize is required.' });
+    }
+
+    const result = await humanizeTextService(text);
+    return res.json(result);
+  } catch (err) {
+    console.error('Humanize text error:', err);
+    return res.status(500).json({ error: 'Failed to humanize text.' });
   }
 }
 

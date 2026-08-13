@@ -6,11 +6,12 @@ import {
   Trash2, 
   RotateCcw, 
   AlertTriangle, 
-  CheckCircle2, 
   Loader2, 
   Info,
   History,
-  Cpu
+  Wand2,
+  Cpu,
+  ArrowRight
 } from 'lucide-react';
 import { api } from '../../services/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -20,7 +21,9 @@ export function AIDetector() {
 
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [humanizing, setHumanizing] = useState(false);
   const [result, setResult] = useState(null);
+  const [humanizerResult, setHumanizerResult] = useState(null);
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
 
@@ -49,6 +52,7 @@ export function AIDetector() {
     if (!text.trim()) return;
     setLoading(true);
     setError(null);
+    setHumanizerResult(null);
     try {
       const data = await api.detectAI(text);
       setResult(data);
@@ -62,12 +66,36 @@ export function AIDetector() {
     }
   };
 
+  const handleHumanize = async () => {
+    if (!text.trim()) return;
+    setHumanizing(true);
+    setError(null);
+    try {
+      const data = await api.humanizeText(text);
+      setHumanizerResult(data);
+      setText(data.humanizedText);
+      // Automatically update detector result with after score analysis
+      setResult(prev => ({
+        ...(prev || {}),
+        aiLikelihood: data.afterScore.aiLikelihood,
+        humanLikelihood: data.afterScore.humanLikelihood,
+        classificationLabel: data.afterScore.classificationLabel,
+        confidence: data.afterScore.confidence
+      }));
+    } catch (err) {
+      setError(err.message || 'Humanization failed.');
+    } finally {
+      setHumanizing(false);
+    }
+  };
+
   const handleCopyReport = () => {
     if (!result) return;
     const reportText = `ScribeCraft AI Content Detection Estimate:
 Likelihood: ${result.aiLikelihood}% (${result.classificationLabel})
 Human Pattern Signal: ${result.humanLikelihood}%
 AI Pattern Signal: ${result.aiLikelihood}%
+Uncertainty: ${result.uncertainty || 'Low'}
 Confidence: ${result.confidence}
 Words Analyzed: ${result.wordCount}
 
@@ -87,6 +115,7 @@ Disclaimer: ${result.disclaimer}`;
   const handleClear = () => {
     setText('');
     setResult(null);
+    setHumanizerResult(null);
     setError(null);
   };
 
@@ -118,11 +147,11 @@ Disclaimer: ${result.disclaimer}`;
               <ShieldCheck size={22} color="#ffffff" />
             </div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
-              AI Content Detector
+              AI Content Detector & Humanizer
             </h2>
           </div>
           <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Multi-signal statistical stylometric estimation system for analyzing writing pattern characteristics.
+            Multi-signal statistical evidence estimation system & natural writing humanizer.
           </p>
         </div>
 
@@ -150,7 +179,7 @@ Disclaimer: ${result.disclaimer}`;
       </div>
 
       {/* Main Grid Layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: result ? '1fr 440px' : '1fr', gap: '1.75rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: result ? '1fr 460px' : '1fr', gap: '1.75rem' }}>
         {/* Left Side: Input Canvas */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div style={{
@@ -233,39 +262,75 @@ Disclaimer: ${result.disclaimer}`;
             />
           </div>
 
-          {/* Action Button */}
-          <button
-            onClick={handleDetect}
-            disabled={loading || !text.trim()}
-            style={{
-              padding: '0.85rem 1.5rem',
-              borderRadius: '12px',
-              backgroundColor: 'var(--primary)',
-              color: '#ffffff',
-              border: 'none',
-              fontWeight: 700,
-              fontSize: '0.95rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem',
-              boxShadow: '0 4px 14px rgba(79,70,229,0.3)',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            {loading ? (
-              <>
-                <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
-                Executing Multi-Signal Ensemble Analysis...
-              </>
-            ) : (
-              <>
-                <Cpu size={18} />
-                Detect AI
-              </>
-            )}
-          </button>
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button
+              onClick={handleDetect}
+              disabled={loading || humanizing || !text.trim()}
+              style={{
+                flex: 1,
+                padding: '0.85rem 1.5rem',
+                borderRadius: '12px',
+                backgroundColor: 'var(--primary)',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: 700,
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                boxShadow: '0 4px 14px rgba(79,70,229,0.3)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
+                  Analyzing Multi-Signal Evidence...
+                </>
+              ) : (
+                <>
+                  <Cpu size={18} />
+                  Detect AI
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleHumanize}
+              disabled={loading || humanizing || !text.trim()}
+              style={{
+                padding: '0.85rem 1.5rem',
+                borderRadius: '12px',
+                backgroundColor: '#10b981',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: 700,
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                boxShadow: '0 4px 14px rgba(16,185,129,0.3)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {humanizing ? (
+                <>
+                  <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
+                  Humanizing Writing...
+                </>
+              ) : (
+                <>
+                  <Wand2 size={18} />
+                  Humanize Writing
+                </>
+              )}
+            </button>
+          </div>
 
           {error && (
             <p style={{ fontSize: '0.85rem', color: 'var(--color-spelling)' }}>
@@ -273,7 +338,37 @@ Disclaimer: ${result.disclaimer}`;
             </p>
           )}
 
-          {/* User History Drawer / Section */}
+          {/* Before / After Humanization Result Card */}
+          {humanizerResult && (
+            <div style={{ padding: '1.25rem', borderRadius: '16px', backgroundColor: 'rgba(16,185,129,0.08)', border: '1px solid #10b981', color: 'var(--text-main)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 700, marginBottom: '0.5rem' }}>
+                <Wand2 size={18} />
+                <span>Writing Stylistically Humanized</span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '0.75rem 0', fontSize: '0.9rem', fontWeight: 700 }}>
+                <span style={{ color: 'var(--color-spelling)' }}>
+                  Before: {humanizerResult.beforeScore.aiLikelihood}% AI
+                </span>
+                <ArrowRight size={16} />
+                <span style={{ color: '#10b981' }}>
+                  After: {humanizerResult.afterScore.aiLikelihood}% AI
+                </span>
+              </div>
+
+              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                {(humanizerResult.changedSignals || []).map((sig, idx) => (
+                  <li key={idx}>✓ {sig}</li>
+                ))}
+              </ul>
+
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                {humanizerResult.disclaimer}
+              </p>
+            </div>
+          )}
+
+          {/* User History Drawer */}
           {showHistory && isAuthenticated && (
             <div style={{ marginTop: '1rem', padding: '1.25rem', borderRadius: '16px', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
               <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.85rem' }}>
@@ -344,28 +439,38 @@ Disclaimer: ${result.disclaimer}`;
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                     <span style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
-                      AI Writing Estimate
+                      AI WRITING PATTERN ESTIMATE
                     </span>
 
-                    <span style={{
-                      fontSize: '0.75rem',
-                      fontWeight: 700,
-                      padding: '0.2rem 0.65rem',
-                      borderRadius: '9999px',
-                      backgroundColor: 'rgba(99,102,241,0.12)',
-                      color: '#6366f1'
-                    }}>
-                      Confidence: {result.confidence}
-                    </span>
+                    <div style={{ display: 'flex', gap: '0.35rem' }}>
+                      <span style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '9999px',
+                        backgroundColor: 'rgba(99,102,241,0.12)',
+                        color: '#6366f1'
+                      }}>
+                        Confidence: {result.confidence}
+                      </span>
+
+                      <span style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '9999px',
+                        backgroundColor: 'rgba(245,158,11,0.12)',
+                        color: '#f59e0b'
+                      }}>
+                        Uncertainty: {result.uncertainty || 'Low'}
+                      </span>
+                    </div>
                   </div>
 
                   <div style={{ marginBottom: '1.25rem' }}>
                     <h3 style={{ fontSize: '1.75rem', fontWeight: 800, color: result.aiLikelihood > 50 ? 'var(--color-spelling)' : '#10b981', marginBottom: '0.25rem' }}>
-                      {result.aiLikelihood}% AI-Pattern Likelihood
+                      {result.aiLikelihood}% {result.classificationLabel}
                     </h3>
-                    <p style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.2rem' }}>
-                      {result.classificationLabel}
-                    </p>
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                       Text analyzed: {result.wordCount} words
                     </p>
@@ -442,7 +547,7 @@ Disclaimer: ${result.disclaimer}`;
                   </div>
                 </div>
 
-                {/* Signal Breakdown Table */}
+                {/* Neutral Signal Breakdown Table */}
                 <div style={{ padding: '1.25rem', borderRadius: '16px', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
                   <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.85rem' }}>
                     Signal Breakdown
@@ -452,7 +557,7 @@ Disclaimer: ${result.disclaimer}`;
                     {(result.keySignals || []).map((sig, idx) => (
                       <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', paddingBottom: '0.4rem', borderBottom: idx < result.keySignals.length - 1 ? '1px solid var(--border-color)' : 'none' }}>
                         <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{sig.name}</span>
-                        <span style={{ fontWeight: 600, color: sig.level.includes('High') || sig.level.includes('Formulaic') || sig.level.includes('Uniform') ? 'var(--color-spelling)' : '#10b981' }}>
+                        <span style={{ fontWeight: 600, color: sig.level.includes('Formulaic') || sig.level.includes('Generic') || sig.level.includes('Symmetrical') ? 'var(--color-spelling)' : '#10b981' }}>
                           {sig.result}
                         </span>
                       </div>
@@ -460,7 +565,7 @@ Disclaimer: ${result.disclaimer}`;
                   </div>
                 </div>
 
-                {/* Why this result? Bullet Points */}
+                {/* Dynamic "Why this result?" Evidence Section */}
                 <div style={{ padding: '1.25rem', borderRadius: '16px', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
                   <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.75rem' }}>
                     Why this result?

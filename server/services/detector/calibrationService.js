@@ -1,7 +1,7 @@
 /**
- * Calibration & Ensemble Weighting Engine
- * Combines signals into a calibrated AI writing pattern probability estimate.
- * Applies text length confidence constraints and generates user-facing evidence bullet points.
+ * Calibration & Multi-Signal Evidence Fusion Engine
+ * Implements non-linear evidence aggregation (Noisy-OR combination),
+ * uncertainty calculation, text length confidence bounds, and evidence bullet formatting.
  */
 
 export function calibrateEnsemble(signals, wordCount, semanticAssessment = null) {
@@ -13,80 +13,111 @@ export function calibrateEnsemble(signals, wordCount, semanticAssessment = null)
     };
   }
 
-  const { sentence, burstiness, lexical, repetition, predictability, structure, stylometry } = signals;
+  const { sentence, burstiness, lexical, repetition, predictability, structure, stylometry, genericness } = signals;
 
-  // Dynamic signal weight setup based on strong indicator presence
-  let weights = {
-    predictability: predictability.signalScore >= 75 ? 0.35 : 0.20,
-    burstiness: 0.20,
-    sentence: 0.15,
-    repetition: 0.12,
-    lexical: 0.10,
-    structure: 0.08,
-    semantic: 0.0
-  };
+  // 1. Convert Signal Scores into Evidence Probabilities [0.0 - 1.0]
+  const pPredictability = (predictability?.signalScore || 10) / 100;
+  const pGenericness = (genericness?.signalScore || 10) / 100;
+  const pStructure = (structure?.signalScore || 10) / 100;
+  const pRepetition = (repetition?.signalScore || 15) / 100;
+  const pSentence = (sentence?.signalScore || 15) / 100;
+  const pStylometry = (stylometry?.signalScore || 25) / 100;
 
-  let totalWeight = weights.predictability + weights.burstiness + weights.sentence + weights.repetition + weights.lexical + weights.structure;
-
-  let weightedSum = 
-    (predictability.signalScore * weights.predictability) +
-    (burstiness.signalScore * weights.burstiness) +
-    (sentence.signalScore * weights.sentence) +
-    (repetition.signalScore * weights.repetition) +
-    (lexical.signalScore * weights.lexical) +
-    (structure.signalScore * weights.structure);
+  // 2. Non-Linear Noisy-OR Evidence Fusion for AI Probability
+  // P(AI) = 1 - (1 - w1*s1) * (1 - w2*s2) ...
+  let nonAiProb = 
+    (1 - 0.50 * pPredictability) *
+    (1 - 0.45 * pGenericness) *
+    (1 - 0.30 * pStructure) *
+    (1 - 0.25 * pRepetition) *
+    (1 - 0.25 * pSentence) *
+    (1 - 0.20 * pStylometry);
 
   if (semanticAssessment && typeof semanticAssessment.aiPatternSignal === 'number') {
-    weights.semantic = 0.25;
-    totalWeight += 0.25;
-    weightedSum += (semanticAssessment.aiPatternSignal * weights.semantic);
+    const pSemantic = semanticAssessment.aiPatternSignal / 100;
+    nonAiProb *= (1 - 0.40 * pSemantic);
   }
 
-  let rawScore = Math.round(weightedSum / totalWeight);
+  let rawAiProb = 1 - nonAiProb;
 
-  // Calibrate & bound score
-  const aiLikelihood = Math.max(5, Math.min(95, rawScore));
-  const humanLikelihood = 100 - aiLikelihood;
-  const aiAssistedLikelihood = aiLikelihood > 20 && aiLikelihood < 70 ? aiLikelihood : Math.round(aiLikelihood * 0.7);
+  // 3. Human Evidence Gathering (Contractions, first person, high burstiness, academic markers)
+  let humanEvidenceCount = 0;
+  if (stylometry.contractionCount > 0) humanEvidenceCount += 1.5;
+  if (stylometry.firstPersonCount > 0) humanEvidenceCount += 1.5;
+  if (burstiness.adjacentDeltaMean > 6.0) humanEvidenceCount += 1.0;
+  if (stylometry.isAcademicHuman) humanEvidenceCount += 2.5;
+
+  let rawHumanProb = Math.min(0.95, humanEvidenceCount * 0.22 + (1 - rawAiProb) * 0.4);
+
+  // Informal Human Protection: Dampen AI likelihood if heavy first-person pronouns and contractions present
+  if (stylometry.firstPersonCount >= 2 || (stylometry.contractionCount > 0 && stylometry.firstPersonCount > 0)) {
+    if (pPredictability < 0.70) {
+      rawAiProb *= 0.45;
+      rawHumanProb = 0.90;
+    }
+  }
+
+  // Academic Human Protection: Dampen AI likelihood if academic markers present
+  if (stylometry.isAcademicHuman && pPredictability < 0.70) {
+    rawAiProb *= 0.30;
+    rawHumanProb = 0.90;
+  }
+
+  // Final Calibrated Percentages
+  let aiLikelihood = Math.round(rawAiProb * 100);
+  let humanLikelihood = Math.round(rawHumanProb * 100);
+
+  // Saturation & Bounds
+  aiLikelihood = Math.max(5, Math.min(96, aiLikelihood));
+  humanLikelihood = Math.max(5, Math.min(96, humanLikelihood));
+
+  // Explicit Uncertainty Calculation
+  const certaintyDelta = Math.abs(aiLikelihood - humanLikelihood);
+  let uncertainty = 'Low';
+  if (certaintyDelta < 20) uncertainty = 'High';
+  else if (certaintyDelta < 40) uncertainty = 'Moderate';
 
   // Calibrated Classification Label
   let classificationLabel = 'Very Low AI-Pattern Signal';
-  if (aiLikelihood >= 86) classificationLabel = 'Very High AI-Pattern Signal';
-  else if (aiLikelihood >= 71) classificationLabel = 'High AI-Pattern Signal';
-  else if (aiLikelihood >= 51) classificationLabel = 'Moderate AI-Pattern Signal';
-  else if (aiLikelihood >= 31) classificationLabel = 'Mixed or Uncertain';
+  if (aiLikelihood >= 85) classificationLabel = 'Very High AI-Pattern Signal';
+  else if (aiLikelihood >= 70) classificationLabel = 'High AI-Pattern Signal';
+  else if (aiLikelihood >= 50) classificationLabel = 'Moderate AI-Pattern Signal';
+  else if (aiLikelihood >= 35) classificationLabel = 'Mixed or Uncertain';
   else if (aiLikelihood >= 16) classificationLabel = 'Low AI-Pattern Signal';
 
   // Text Length Dependent Confidence Bounds
   let confidence = 'Low';
   if (wordCount >= 250) {
-    const signalDiff = Math.abs(burstiness.signalScore - predictability.signalScore);
-    confidence = signalDiff < 25 ? 'High' : 'Medium';
+    confidence = (predictability.signalScore >= 60 && genericness.signalScore >= 50) ? 'High' : 'Medium';
   } else if (wordCount >= 100) {
     confidence = 'Medium';
   }
 
-  // Generate User-Facing Reasons based on computed signals
+  // Generate Neutral User-Facing Evidence Reasons
   const reasons = [];
 
   if (predictability.signalScore >= 50) {
     reasons.push(predictability.explanation);
-  } else {
-    reasons.push('Phrasing and transitions appear organic without overused clichés.');
   }
 
-  if (burstiness.signalScore >= 60) {
-    reasons.push(burstiness.explanation);
-  } else {
-    reasons.push('Sentence length and rhythm vary naturally across adjacent sentences.');
-  }
-
-  if (repetition.signalScore >= 50) {
-    reasons.push(repetition.explanation);
+  if (genericness && genericness.signalScore >= 50) {
+    reasons.push(genericness.explanation);
   }
 
   if (structure.signalScore >= 60) {
     reasons.push(structure.explanation);
+  }
+
+  if (stylometry.isAcademicHuman) {
+    reasons.push(stylometry.explanation);
+  } else if (stylometry.contractionCount > 0 || stylometry.firstPersonCount > 0) {
+    reasons.push(stylometry.explanation);
+  }
+
+  if (burstiness.signalScore >= 60) {
+    reasons.push(burstiness.explanation);
+  } else if (reasons.length < 2) {
+    reasons.push('Sentence length and rhythm vary naturally across adjacent sentences.');
   }
 
   if (semanticAssessment && semanticAssessment.reasoningSummary) {
@@ -96,34 +127,34 @@ export function calibrateEnsemble(signals, wordCount, semanticAssessment = null)
   // Formatted Key Signals Array
   const keySignals = [
     {
-      name: 'Sentence Variation',
-      result: sentence.stdDev > 5.5 ? 'High Natural Variation' : 'Moderate Uniformity',
-      level: sentence.signalScore > 50 ? 'Uniform' : 'Natural'
-    },
-    {
-      name: 'Burstiness',
-      result: burstiness.rating,
-      level: burstiness.signalScore > 50 ? 'Low Variation' : 'High Variation'
-    },
-    {
-      name: 'Vocabulary Diversity',
-      result: lexical.rating,
-      level: lexical.mattr > 0.75 ? 'High Diversity' : 'Controlled'
-    },
-    {
       name: 'Phrase Predictability',
       result: predictability.rating,
-      level: predictability.signalScore > 50 ? 'Formulaic' : 'Natural'
+      level: predictability.signalScore >= 60 ? 'Formulaic' : 'Natural'
     },
     {
-      name: 'Structural Uniformity',
+      name: 'Semantic Genericness',
+      result: genericness ? genericness.rating : 'Specific Details',
+      level: genericness && genericness.signalScore >= 60 ? 'Generic Abstraction' : 'Specific'
+    },
+    {
+      name: 'Structural Regularity',
       result: structure.rating,
-      level: structure.signalScore > 50 ? 'Symmetrical' : 'Varied'
+      level: structure.signalScore >= 60 ? 'Symmetrical' : 'Varied'
     },
     {
-      name: 'Repetition',
-      result: repetition.rating,
-      level: repetition.signalScore > 50 ? 'Repeated Openers' : 'Low Repetition'
+      name: 'Sentence Rhythm',
+      result: burstiness.rating,
+      level: burstiness.signalScore >= 60 ? 'Low Variation' : 'High Variation'
+    },
+    {
+      name: 'Lexical Pattern',
+      result: lexical.rating,
+      level: lexical.mattr > 0.75 ? 'Diverse' : 'Controlled'
+    },
+    {
+      name: 'Stylometry',
+      result: stylometry.rating,
+      level: stylometry.isAcademicHuman ? 'Academic Human' : (stylometry.contractionCount > 0 ? 'Personal Human' : 'Standard Profile')
     }
   ];
 
@@ -132,7 +163,7 @@ export function calibrateEnsemble(signals, wordCount, semanticAssessment = null)
     wordCount,
     aiLikelihood,
     humanLikelihood,
-    aiAssistedLikelihood,
+    uncertainty,
     classificationLabel,
     confidence,
     reasons,
