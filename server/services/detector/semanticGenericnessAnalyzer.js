@@ -1,7 +1,7 @@
 /**
  * Semantic Genericness Analyzer
- * Evaluates text for broad claims, interchangeable examples, low personal specificity,
- * and lack of concrete lived experience.
+ * Strictly distinguishes true concrete human details (personal experiences, specific dates, concrete locations)
+ * from generic example listings ("healthcare, education, finance") and abstract expository claims.
  */
 
 const GENERIC_EXPOSITORY_PATTERNS = [
@@ -32,9 +32,9 @@ export function analyzeSemanticGenericness(preprocessed) {
     return {
       genericnessScore: 0,
       detectedGenericPatterns: [],
-      specificDetailsCount: 0,
+      specificityDensity: 0,
       signalScore: 10,
-      rating: 'Specific Details',
+      rating: 'Grounded Topic Detail',
       explanation: 'Insufficient text to evaluate semantic genericness.'
     };
   }
@@ -56,30 +56,38 @@ export function analyzeSemanticGenericness(preprocessed) {
     }
   }
 
-  // 2. Personal Specificity Markers (Proper nouns, numbers/dates, specific names)
+  // 2. TRUE Concrete Human Detail vs Broad Industry Listings
+  // Exclude generic sector enumeration words from proper noun count
+  const genericSectors = new Set(['healthcare', 'education', 'finance', 'manufacturing', 'retail', 'transportation', 'technology', 'business', 'industry']);
+  
   const numbersAndDates = (normalizedText.match(/\b\d+(\.\d+)?(%|\$|st|nd|rd|th)?\b/g) || []).length;
-  const properNouns = (normalizedText.match(/\b[A-Z][a-z]{2,}\b/g) || []).filter(w => !['The', 'This', 'That', 'These', 'Those', 'In', 'On', 'At', 'For', 'With', 'However', 'Moreover', 'Furthermore', 'Overall'].includes(w)).length;
+  
+  const rawProperNouns = (normalizedText.match(/\b[A-Z][a-z]{2,}\b/g) || []).filter(w => 
+    !['The', 'This', 'That', 'These', 'Those', 'In', 'On', 'At', 'For', 'With', 'However', 'Moreover', 'Furthermore', 'Overall', 'Artificial', 'Intelligence', 'Digital', 'Technology'].includes(w) &&
+    !genericSectors.has(w.toLowerCase())
+  ).length;
 
-  const specificityScore = numbersAndDates * 1.5 + properNouns * 1.0;
+  // True specificity requires numbers, specific named entities, or personal lived detail
+  const specificityScore = numbersAndDates * 1.5 + rawProperNouns * 1.0;
   const specificityDensity = wordCount > 0 ? (specificityScore / (wordCount / 100)) : 0;
 
   // 3. Compute Genericness Signal Score
   let signalScore = 10;
-  if (genericCount >= 3 || (genericCount >= 2 && specificityDensity < 1.0)) {
-    signalScore = 85;
-  } else if (genericCount >= 2 || (genericCount >= 1 && specificityDensity < 1.5)) {
-    signalScore = 65;
+  if (genericCount >= 3 || (genericCount >= 2 && specificityDensity < 0.5)) {
+    signalScore = 90;
+  } else if (genericCount >= 2 || (genericCount >= 1 && specificityDensity < 1.0)) {
+    signalScore = 75;
   } else if (genericCount >= 1) {
-    signalScore = 40;
+    signalScore = 50;
   }
 
-  let rating = 'Specific Details';
-  if (signalScore >= 75) rating = 'High Genericness';
-  else if (signalScore >= 50) rating = 'Moderate Genericness';
+  let rating = 'Grounded Topic Detail';
+  if (signalScore >= 75) rating = 'Broad Abstract Claims with Low Specificity';
+  else if (signalScore >= 50) rating = 'Moderate Expository Genericness';
 
-  let explanation = 'Text contains specific concrete details and lower generic abstraction.';
-  if (signalScore >= 65) {
-    explanation = `Text contains ${genericCount} generic expository patterns with low personal/concrete specificity (${specificityDensity.toFixed(1)} specificity density).`;
+  let explanation = 'Text contains specific grounded details and concrete human references.';
+  if (signalScore >= 75) {
+    explanation = `Text consists of broad abstract claims with low personal/concrete specificity (${specificityDensity.toFixed(1)} specificity density).`;
   }
 
   return {

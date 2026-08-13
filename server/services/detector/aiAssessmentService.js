@@ -35,7 +35,8 @@ ${text}
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: 'application/json', temperature: 0.0 }
-      })
+      }),
+      signal: AbortSignal.timeout(2500)
     });
 
     if (!response.ok) {
@@ -58,7 +59,7 @@ ${text}
       };
     }
   } catch (err) {
-    console.warn('Gemini AI Assessment error:', err.message);
+    // Silent fallback to local ensemble
   }
 
   return null;
