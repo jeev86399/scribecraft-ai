@@ -126,7 +126,7 @@ Classification: Moderate AI-Pattern Signal (Confidence: Low)
 Status: ✅ PASS (Target: 50–98%)
 Strongest Evidence: [
   'High semantic interchangeability detected (8.9 abstract terms per 100 words) with generic expository template progression.',
-  'Text consists of broad abstract claims with low personal/concrete specificity (0.0 specificity density).'
+  'Text enumerates broad sectors (2 industry terms) without personal/author-specific grounded detail.'
 ]
 ----------------------------------------------------------------------------------------
 
@@ -156,7 +156,7 @@ Classification: Very High AI-Pattern Signal (Confidence: Medium)
 Status: ✅ PASS (Target: 60–98%)
 Strongest Evidence: [
   'High semantic interchangeability detected (9.4 abstract terms per 100 words) with generic expository template progression.',
-  'Text consists of broad abstract claims with low personal/concrete specificity (0.0 specificity density).'
+  'Text consists of broad abstract claims with low personal/author-specific detail (0.0 specificity density).'
 ]
 ----------------------------------------------------------------------------------------
 

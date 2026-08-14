@@ -14,6 +14,7 @@ import { analyzeHumanEvidence } from './humanEvidenceAnalyzer.js';
 import { analyzeAuthorFingerprint } from './authorFingerprintAnalyzer.js';
 import { getAISemanticAssessment } from './aiAssessmentService.js';
 import { calibrateEnsemble } from './calibrationService.js';
+import { validateDetectorConsistency } from './consistencyValidator.js';
 
 export async function detectAITextEnsemble(rawText, options = {}) {
   // 1. Preprocess & Extract Structured Features
@@ -64,8 +65,11 @@ export async function detectAITextEnsemble(rawText, options = {}) {
 
   const calibrated = calibrateEnsemble(signals, preprocessed.wordCount, semanticRes, options.enableDiagnosticTrace || false);
 
+  // 5. Validate Detector Output Consistency
+  const validated = validateDetectorConsistency(calibrated, signals);
+
   return {
-    ...calibrated,
+    ...validated,
     metrics: signals
   };
 }

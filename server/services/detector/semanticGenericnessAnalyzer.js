@@ -1,7 +1,7 @@
 /**
- * Semantic Genericness Analyzer
- * Strictly distinguishes true concrete human details (personal experiences, specific dates, concrete locations)
- * from generic example listings ("healthcare, education, finance") and abstract expository claims.
+ * Semantic Genericness & Grounded Detail Analyzer
+ * Clearly distinguishes Topical Context (broad industry lists like "healthcare, education, finance")
+ * from Author-Specific Grounded Detail (numbers, specific named entities, personal experiences).
  */
 
 const GENERIC_EXPOSITORY_PATTERNS = [
@@ -33,8 +33,10 @@ export function analyzeSemanticGenericness(preprocessed) {
       genericnessScore: 0,
       detectedGenericPatterns: [],
       specificityDensity: 0,
+      topicalContextLevel: 'None',
+      authorDetailLevel: 'Low',
       signalScore: 10,
-      rating: 'Grounded Topic Detail',
+      rating: 'Author-Specific Grounded Detail',
       explanation: 'Insufficient text to evaluate semantic genericness.'
     };
   }
@@ -56,10 +58,16 @@ export function analyzeSemanticGenericness(preprocessed) {
     }
   }
 
-  // 2. TRUE Concrete Human Detail vs Broad Industry Listings
-  // Exclude generic sector enumeration words from proper noun count
+  // 2. Separate Topical Context vs Author-Specific Grounded Detail
   const genericSectors = new Set(['healthcare', 'education', 'finance', 'manufacturing', 'retail', 'transportation', 'technology', 'business', 'industry']);
   
+  let topicalSectorCount = 0;
+  for (const word of cleanWords) {
+    if (genericSectors.has(word)) {
+      topicalSectorCount++;
+    }
+  }
+
   const numbersAndDates = (normalizedText.match(/\b\d+(\.\d+)?(%|\$|st|nd|rd|th)?\b/g) || []).length;
   
   const rawProperNouns = (normalizedText.match(/\b[A-Z][a-z]{2,}\b/g) || []).filter(w => 
@@ -67,9 +75,16 @@ export function analyzeSemanticGenericness(preprocessed) {
     !genericSectors.has(w.toLowerCase())
   ).length;
 
-  // True specificity requires numbers, specific named entities, or personal lived detail
-  const specificityScore = numbersAndDates * 1.5 + rawProperNouns * 1.0;
-  const specificityDensity = wordCount > 0 ? (specificityScore / (wordCount / 100)) : 0;
+  const authorSpecificityScore = numbersAndDates * 1.5 + rawProperNouns * 1.0;
+  const specificityDensity = wordCount > 0 ? (authorSpecificityScore / (wordCount / 100)) : 0;
+
+  let topicalContextLevel = 'Low';
+  if (topicalSectorCount >= 3) topicalContextLevel = 'High Industry Enumeration';
+  else if (topicalSectorCount >= 1) topicalContextLevel = 'Moderate Topical Reference';
+
+  let authorDetailLevel = 'Low';
+  if (specificityDensity >= 1.5) authorDetailLevel = 'High Author Grounded Detail';
+  else if (specificityDensity >= 0.5) authorDetailLevel = 'Moderate Specific Detail';
 
   // 3. Compute Genericness Signal Score
   let signalScore = 10;
@@ -81,19 +96,26 @@ export function analyzeSemanticGenericness(preprocessed) {
     signalScore = 50;
   }
 
-  let rating = 'Grounded Topic Detail';
-  if (signalScore >= 75) rating = 'Broad Abstract Claims with Low Specificity';
-  else if (signalScore >= 50) rating = 'Moderate Expository Genericness';
+  let rating = 'Author-Specific Grounded Detail';
+  if (signalScore >= 75) {
+    rating = topicalSectorCount >= 2 ? 'Broad Industry Enumeration without Personal Detail' : 'Broad Abstract Claims with Low Specificity';
+  } else if (signalScore >= 50) {
+    rating = 'Moderate Expository Genericness';
+  }
 
   let explanation = 'Text contains specific grounded details and concrete human references.';
   if (signalScore >= 75) {
-    explanation = `Text consists of broad abstract claims with low personal/concrete specificity (${specificityDensity.toFixed(1)} specificity density).`;
+    explanation = topicalSectorCount >= 2 
+      ? `Text enumerates broad sectors (${topicalSectorCount} industry terms) without personal/author-specific grounded detail.`
+      : `Text consists of broad abstract claims with low personal/author-specific detail (${specificityDensity.toFixed(1)} specificity density).`;
   }
 
   return {
     genericnessScore: signalScore,
     detectedGenericPatterns: detectedPatterns,
     specificityDensity: Math.round(specificityDensity * 10) / 10,
+    topicalContextLevel,
+    authorDetailLevel,
     signalScore,
     rating,
     explanation
