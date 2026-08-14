@@ -10,10 +10,12 @@ import { analyzeSemanticGenericness } from './semanticGenericnessAnalyzer.js';
 import { analyzeGenericExposition } from './genericExpositionAnalyzer.js';
 import { analyzeDiscoursePatterns } from './discoursePatternAnalyzer.js';
 import { analyzeCoherence } from './coherenceAnalyzer.js';
+import { analyzeHumanEvidence } from './humanEvidenceAnalyzer.js';
+import { analyzeAuthorFingerprint } from './authorFingerprintAnalyzer.js';
 import { getAISemanticAssessment } from './aiAssessmentService.js';
 import { calibrateEnsemble } from './calibrationService.js';
 
-export async function detectAITextEnsemble(rawText) {
+export async function detectAITextEnsemble(rawText, options = {}) {
   // 1. Preprocess & Extract Structured Features
   const preprocessed = preprocessText(rawText);
 
@@ -37,11 +39,13 @@ export async function detectAITextEnsemble(rawText) {
   const genericExpositionRes = analyzeGenericExposition(preprocessed);
   const discourseRes = analyzeDiscoursePatterns(preprocessed);
   const coherenceRes = analyzeCoherence(preprocessed);
+  const humanEvidenceRes = analyzeHumanEvidence(preprocessed, stylometryRes);
+  const authorFingerprintRes = analyzeAuthorFingerprint(preprocessed, genericnessRes, humanEvidenceRes);
 
   // 3. Execute Optional Backend Gemini Semantic Assessment
   const semanticRes = await getAISemanticAssessment(rawText);
 
-  // 4. Calibrate Multi-Signal Evidence Fusion Ensemble Output
+  // 4. Calibrate Multi-Family Evidence Convergence Ensemble Output
   const signals = {
     sentence: sentenceRes,
     burstiness: burstinessRes,
@@ -53,25 +57,15 @@ export async function detectAITextEnsemble(rawText) {
     genericness: genericnessRes,
     genericExposition: genericExpositionRes,
     discourse: discourseRes,
-    coherence: coherenceRes
+    coherence: coherenceRes,
+    humanEvidence: humanEvidenceRes,
+    authorFingerprint: authorFingerprintRes
   };
 
-  const calibrated = calibrateEnsemble(signals, preprocessed.wordCount, semanticRes);
+  const calibrated = calibrateEnsemble(signals, preprocessed.wordCount, semanticRes, options.enableDiagnosticTrace || false);
 
   return {
     ...calibrated,
-    metrics: {
-      sentence: sentenceRes,
-      burstiness: burstinessRes,
-      lexical: lexicalRes,
-      repetition: repetitionRes,
-      predictability: predictabilityRes,
-      structure: structureRes,
-      stylometry: stylometryRes,
-      genericness: genericnessRes,
-      genericExposition: genericExpositionRes,
-      discourse: discourseRes,
-      coherence: coherenceRes
-    }
+    metrics: signals
   };
 }

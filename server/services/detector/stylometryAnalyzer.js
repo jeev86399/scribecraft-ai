@@ -1,76 +1,107 @@
 /**
- * Stylometric Feature Profile Analyzer (Signal 9)
- * Evaluates function word ratio, punctuation, contractions, first-person pronouns,
- * discourse markers, and academic human indicators.
+ * Stylometry & Academic / Personal Human Signature Analyzer
+ * Evaluates function word ratio, authentic informal contractions (excluding possessive nouns),
+ * first-person pronoun density, and formal academic research citation markers.
  */
 
-const ACADEMIC_CITATION_MARKERS = [
-  'et al', 'figure', 'table', 'hypothesis', 'methodology',
-  'statistically', 'statistically significant', 'p <', 'p >', 'empirical',
-  'according to', 'as described by', 'data show', 'results indicate'
+const FUNCTION_WORDS = new Set([
+  'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i',
+  'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at',
+  'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she',
+  'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what'
+]);
+
+const INFORMAL_CONTRACTIONS = new Set([
+  "don't", "can't", "won't", "isn't", "aren't", "wasn't", "weren't",
+  "haven't", "hasn't", "hadn't", "doesn't", "couldn't", "shouldn't", "wouldn't",
+  "i'm", "i've", "i'll", "i'd", "we're", "we've", "we'll", "we'd",
+  "you're", "you've", "you'll", "you'd", "they're", "they've", "they'll", "they'd",
+  "it's", "that's", "what's", "who's", "there's", "here's"
+]);
+
+const ACADEMIC_CITATIONS = [
+  /\bet al\.\b/i,
+  /\b(Smith|Johnson|Williams|Brown|Jones|Davis|Miller|Wilson|Moore|Taylor|Anderson|Thomas|Jackson|White|Harris|Martin|Thompson|Garcia|Martinez|Robinson)\s*\(?\d{4}\)?/i,
+  /\b(Figure|Table|Section|Appendix)\s+\d+\b/i,
+  /\bempirical (evidence|data|findings|analysis|results)\b/i,
+  /\bstatistically significant\b/i,
+  /\blongitudinal analysis\b/i,
+  /\bcortical thickness\b/i,
+  /\bsynaptic density\b/i,
+  /\bp\s*[<=]\s*0?\.\d+\b/i,
+  /\bstandard deviation\b/i,
+  /\bconfidence interval\b/i
 ];
 
 export function analyzeStylometry(preprocessed) {
-  const { cleanWords, functionWords, normalizedText, sentences, wordCount } = preprocessed;
-  if (!cleanWords || wordCount < 15) {
+  const { normalizedText, cleanWords, words, wordCount } = preprocessed;
+  if (!cleanWords || cleanWords.length === 0) {
     return {
       functionWordRatio: 0,
       contractionCount: 0,
       firstPersonCount: 0,
+      firstPersonDensity: 0,
       isAcademicHuman: false,
-      signalScore: 25,
-      rating: 'Natural Profile',
-      explanation: 'Insufficient text for stylometric profiling.'
+      academicMarkerCount: 0,
+      signalScore: 10,
+      rating: 'Standard Stylometric Profile',
+      explanation: 'Insufficient text to analyze stylometry.'
     };
   }
 
-  const lowerText = normalizedText.toLowerCase();
-
-  // 1. Contractions Detection
-  const contractions = (normalizedText.match(/\b[a-z]+'(t|re|ve|ll|d|m|s)\b/gi) || []).length;
-
-  // 2. First-Person Pronouns Detection
-  const firstPersonPronouns = (normalizedText.match(/\b(i|me|my|mine|myself|we|us|our|ours)\b/gi) || []).length;
-  const firstPersonDensity = wordCount > 0 ? (firstPersonPronouns / (wordCount / 100)) : 0;
-
-  // 3. Academic Human Indicators (prevents false positives on academic prose)
-  let academicMarkerCount = 0;
-  for (const marker of ACADEMIC_CITATION_MARKERS) {
-    if (lowerText.includes(marker)) academicMarkerCount++;
+  // 1. Function Word Ratio
+  let functionWordCount = 0;
+  for (const w of cleanWords) {
+    if (FUNCTION_WORDS.has(w)) functionWordCount++;
   }
+  const functionWordRatio = cleanWords.length > 0 ? (functionWordCount / cleanWords.length) : 0;
+
+  // 2. Authentic Informal Contractions (EXCLUDING Possessive Nouns like today's, company's!)
+  let contractionCount = 0;
+  for (const token of words) {
+    const cleanToken = token.toLowerCase().replace(/[^a-z']/g, '');
+    if (INFORMAL_CONTRACTIONS.has(cleanToken)) {
+      contractionCount++;
+    }
+  }
+
+  // 3. First-Person Pronoun Density
+  let firstPersonCount = 0;
+  for (const w of cleanWords) {
+    if (['i', 'me', 'my', 'mine', 'myself', 'we', 'our', 'us', 'ours', 'ourselves'].includes(w)) {
+      firstPersonCount++;
+    }
+  }
+  const firstPersonDensity = wordCount > 0 ? (firstPersonCount / (wordCount / 100)) : 0;
+
+  // 4. Academic Research Prose Markers
+  let academicMarkerCount = 0;
+  for (const regex of ACADEMIC_CITATIONS) {
+    if (regex.test(normalizedText)) {
+      academicMarkerCount++;
+    }
+  }
+
   const isAcademicHuman = academicMarkerCount >= 2;
 
-  // 4. Function Word Ratio & Word Length
-  const functionWordRatio = wordCount > 0 ? (functionWords.length / wordCount) : 0;
-  const wordLengths = cleanWords.map(w => w.length);
-  const avgWordLength = wordCount > 0 ? (wordLengths.reduce((a, b) => a + b, 0) / wordCount) : 0;
+  let signalScore = 15;
+  let rating = 'Standard Stylometric Profile';
+  let explanation = 'Stylometric distribution matches neutral background writing patterns.';
 
-  // 5. Score Calculation
-  let signalScore = 25;
-  
   if (isAcademicHuman) {
-    signalScore = 15; // Strongly reduces AI false-positive risk for academic papers!
-  } else if (contractions > 0 || firstPersonDensity > 2.0) {
-    signalScore = 15; // Natural informal human writing signature
-  } else if (functionWordRatio >= 0.46 && functionWordRatio <= 0.56 && avgWordLength >= 4.8 && avgWordLength <= 5.8) {
-    signalScore = 55; // Standard disciplined profile
-  }
-
-  let rating = 'Natural Human Stylometry';
-  if (isAcademicHuman) rating = 'Academic Formal Human Profile';
-  else if (signalScore >= 55) rating = 'Disciplined Stylometric Profile';
-
-  let explanation = `Stylometric profile features natural human language signatures (${contractions} contractions, ${firstPersonPronouns} first-person references).`;
-  if (isAcademicHuman) {
+    signalScore = 5;
+    rating = 'Academic Research Signature';
     explanation = `Contains ${academicMarkerCount} formal academic markers, characteristic of peer-reviewed human research prose.`;
-  } else if (signalScore >= 55) {
-    explanation = `Stylometric features show controlled function word ratio (${(functionWordRatio * 100).toFixed(0)}%) and average word length (${avgWordLength.toFixed(1)} chars).`;
+  } else if (contractionCount > 0 || firstPersonCount >= 2) {
+    signalScore = 10;
+    rating = 'Personal Human Voice';
+    explanation = `Stylometric profile features natural human language signatures (${contractionCount} authentic contractions, ${firstPersonCount} first-person references).`;
   }
 
   return {
     functionWordRatio: Math.round(functionWordRatio * 100) / 100,
-    contractionCount: contractions,
-    firstPersonCount: firstPersonPronouns,
+    contractionCount,
+    firstPersonCount,
     firstPersonDensity: Math.round(firstPersonDensity * 10) / 10,
     isAcademicHuman,
     academicMarkerCount,

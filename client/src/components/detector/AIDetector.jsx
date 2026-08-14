@@ -20,6 +20,7 @@ export function AIDetector() {
   const { isAuthenticated } = useAuth();
 
   const [text, setText] = useState('');
+  const [humanizeMode, setHumanizeMode] = useState('natural');
   const [loading, setLoading] = useState(false);
   const [humanizing, setHumanizing] = useState(false);
   const [result, setResult] = useState(null);
@@ -71,10 +72,9 @@ export function AIDetector() {
     setHumanizing(true);
     setError(null);
     try {
-      const data = await api.humanizeText(text);
+      const data = await api.humanizeText(text, humanizeMode);
       setHumanizerResult(data);
       setText(data.humanizedText);
-      // Automatically update detector result with after score analysis
       setResult(prev => ({
         ...(prev || {}),
         aiLikelihood: data.afterScore.aiLikelihood,
@@ -151,7 +151,7 @@ Disclaimer: ${result.disclaimer}`;
             </h2>
           </div>
           <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Multi-signal statistical evidence estimation system & natural writing humanizer.
+            Multi-family statistical evidence convergence system & 5-mode writing humanizer.
           </p>
         </div>
 
@@ -248,7 +248,7 @@ Disclaimer: ${result.disclaimer}`;
               placeholder="Paste or type text here to analyze writing pattern characteristics (minimum 30 words recommended)..."
               style={{
                 width: '100%',
-                height: '360px',
+                height: '340px',
                 padding: '1.25rem',
                 border: 'none',
                 outline: 'none',
@@ -260,6 +260,32 @@ Disclaimer: ${result.disclaimer}`;
                 fontFamily: 'inherit'
               }}
             />
+          </div>
+
+          {/* Mode Selector for Humanizer */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginRight: '0.25rem' }}>
+              Humanizer Mode:
+            </span>
+            {['natural', 'professional', 'academic', 'conversational', 'concise'].map(m => (
+              <button
+                key={m}
+                onClick={() => setHumanizeMode(m)}
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: '9999px',
+                  border: humanizeMode === m ? '1px solid #10b981' : '1px solid var(--border-color)',
+                  backgroundColor: humanizeMode === m ? 'rgba(16,185,129,0.12)' : 'var(--bg-surface)',
+                  color: humanizeMode === m ? '#10b981' : 'var(--text-muted)',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textTransform: 'capitalize'
+                }}
+              >
+                {m}
+              </button>
+            ))}
           </div>
 
           {/* Action Buttons */}
@@ -288,7 +314,7 @@ Disclaimer: ${result.disclaimer}`;
               {loading ? (
                 <>
                   <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
-                  Analyzing Multi-Signal Evidence...
+                  Analyzing Multi-Family Convergence...
                 </>
               ) : (
                 <>
@@ -321,7 +347,7 @@ Disclaimer: ${result.disclaimer}`;
               {humanizing ? (
                 <>
                   <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
-                  Humanizing Writing...
+                  Humanizing ({humanizeMode})...
                 </>
               ) : (
                 <>
@@ -341,9 +367,14 @@ Disclaimer: ${result.disclaimer}`;
           {/* Before / After Humanization Result Card */}
           {humanizerResult && (
             <div style={{ padding: '1.25rem', borderRadius: '16px', backgroundColor: 'rgba(16,185,129,0.08)', border: '1px solid #10b981', color: 'var(--text-main)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 700, marginBottom: '0.5rem' }}>
-                <Wand2 size={18} />
-                <span>Writing Stylistically Humanized</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 700 }}>
+                  <Wand2 size={18} />
+                  <span style={{ textTransform: 'capitalize' }}>Writing Humanized ({humanizerResult.mode} mode)</span>
+                </div>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, padding: '0.2rem 0.55rem', borderRadius: '9999px', backgroundColor: 'rgba(16,185,129,0.2)', color: '#10b981' }}>
+                  -{humanizerResult.scoreDelta} pts
+                </span>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '0.75rem 0', fontSize: '0.9rem', fontWeight: 700 }}>
@@ -357,14 +388,10 @@ Disclaimer: ${result.disclaimer}`;
               </div>
 
               <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                {(humanizerResult.changedSignals || []).map((sig, idx) => (
+                {(humanizerResult.reducedSignals || []).map((sig, idx) => (
                   <li key={idx}>✓ {sig}</li>
                 ))}
               </ul>
-
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                {humanizerResult.disclaimer}
-              </p>
             </div>
           )}
 
@@ -557,7 +584,7 @@ Disclaimer: ${result.disclaimer}`;
                     {(result.keySignals || []).map((sig, idx) => (
                       <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', paddingBottom: '0.4rem', borderBottom: idx < result.keySignals.length - 1 ? '1px solid var(--border-color)' : 'none' }}>
                         <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{sig.name}</span>
-                        <span style={{ fontWeight: 600, color: sig.level.includes('Formulaic') || sig.level.includes('Generic') || sig.level.includes('Symmetrical') ? 'var(--color-spelling)' : '#10b981' }}>
+                        <span style={{ fontWeight: 600, color: sig.level.includes('Formulaic') || sig.level.includes('Generic') || sig.level.includes('Template') || sig.level.includes('Anonymous') ? 'var(--color-spelling)' : '#10b981' }}>
                           {sig.result}
                         </span>
                       </div>
