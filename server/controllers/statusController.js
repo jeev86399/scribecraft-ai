@@ -1,4 +1,4 @@
-import db from '../config/db.js';
+import { db } from '../config/db.js';
 import { isGeminiConfigured } from '../services/aiConfig.js';
 import { pingMLDetector } from '../services/ml-detector-client.js';
 
