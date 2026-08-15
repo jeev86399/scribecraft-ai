@@ -1,7 +1,6 @@
 import { analyzeTextWithNLP, analyzeTone } from './nlpEngine.js';
 import { calculateWritingScore } from './scoringEngine.js';
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+import { callGeminiApi, isGeminiConfigured } from './aiConfig.js';
 
 /**
  * Perform Text Analysis (Combines local NLP engine + optional Gemini AI enrichment)
@@ -11,7 +10,7 @@ export async function analyzeTextService(text, customDictionary = [], enabledCat
   const nlpResult = analyzeTextWithNLP(text, customDictionary, enabledCategories);
 
   // If Gemini API Key is available, we can optionally enhance with AI suggestions
-  if (GEMINI_API_KEY && text.trim().length > 20) {
+  if (isGeminiConfigured() && text.trim().length > 20) {
     try {
       const aiSuggestions = await fetchGeminiSuggestions(text, enabledCategories);
       if (aiSuggestions && Array.isArray(aiSuggestions) && aiSuggestions.length > 0) {
@@ -76,27 +75,10 @@ Text to analyze:
 ${text}
 """`;
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`Gemini HTTP error ${response.status}`);
-  }
-
-  const data = await response.json();
-  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!rawText) return [];
-
-  const parsed = JSON.parse(rawText);
-  if (!Array.isArray(parsed)) return [];
-
-  return parsed.map((item, idx) => ({
+    const parsed = await callGeminiApi(prompt, 2048, 0.2);
+    if (!Array.isArray(parsed)) return [];
+    
+    return parsed.map((item, idx) => ({
     id: `ai_issue_${idx + 1}_${Date.now()}`,
     category: item.category || 'clarity',
     severity: item.severity || 'suggestion',
@@ -122,7 +104,7 @@ export async function rewriteTextService(text, instructionType, targetTone = 'Pr
   // Local rule-based rewrite fallback
   const localRewrite = getLocalRewriteFallback(text, instructionType, targetTone);
 
-  if (GEMINI_API_KEY) {
+  if (isGeminiConfigured()) {
     try {
       const prompt = `You are an expert editor and AI writing assistant.
 Rewrite the following text according to the target goal: "${instructionType}" and target tone: "${targetTone}".
@@ -135,27 +117,12 @@ Original Text:
 ${text}
 """`;
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.3 }
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (rawText) {
-          const parsed = JSON.parse(rawText);
-          if (parsed.rewrittenText) {
-            return {
-              rewrittenText: parsed.rewrittenText,
-              explanation: parsed.explanation || `Rewritten for ${instructionType} (${targetTone} tone).`
-            };
-          }
-        }
+      const parsed = await callGeminiApi(prompt, 2048, 0.3);
+      if (parsed && parsed.rewrittenText) {
+        return {
+          rewrittenText: parsed.rewrittenText,
+          explanation: parsed.explanation || `Rewritten for ${instructionType} (${targetTone} tone).`
+        };
       }
     } catch (err) {
       console.warn('Gemini rewrite error, using local fallback:', err.message);
@@ -176,7 +143,7 @@ export async function paraphraseTextService(text, mode = 'Standard') {
   // Local fallback paraphraser
   const localParaphrase = getLocalParaphraseFallback(text, mode);
 
-  if (GEMINI_API_KEY) {
+  if (isGeminiConfigured()) {
     try {
       const prompt = `You are a professional editor and paraphrasing engine.
 Paraphrase the following text in "${mode}" mode while strictly preserving the original meaning, facts, numbers, dates, proper nouns, and URLs.
@@ -193,28 +160,13 @@ Original Text:
 ${text}
 """`;
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.3 }
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (rawText) {
-          const parsed = JSON.parse(rawText);
-          if (parsed.paraphrasedText) {
-            return {
-              paraphrasedText: parsed.paraphrasedText,
-              mode,
-              explanation: parsed.explanation || `Paraphrased in ${mode} mode.`
-            };
-          }
-        }
+      const parsed = await callGeminiApi(prompt, 2048, 0.3);
+      if (parsed && parsed.paraphrasedText) {
+        return {
+          paraphrasedText: parsed.paraphrasedText,
+          mode,
+          explanation: parsed.explanation || `Paraphrased in ${mode} mode.`
+        };
       }
     } catch (err) {
       console.warn('Gemini paraphrase error, using local fallback:', err.message);

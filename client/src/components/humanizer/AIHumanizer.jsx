@@ -102,7 +102,7 @@ export function AIHumanizer() {
             </h2>
           </div>
           <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Rewrite AI-generated text to bypass detection systems naturally.
+            Rewrite AI-generated text to improve naturalness, rhythm, and style variation while preserving factual meaning.
           </p>
         </div>
 

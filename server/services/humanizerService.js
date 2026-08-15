@@ -1,7 +1,6 @@
 import { detectAITextEnsemble } from './detector/detectorEngine.js';
 import { STAGE1_ANALYSIS_PROMPT, GENERATION_PROMPTS, REFINEMENT_PROMPT } from './humanizerPrompts.js';
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+import { callGeminiApi } from './aiConfig.js';
 
 // Minimum meaning preservation threshold required to accept a rewrite
 const MIN_MEANING_PRESERVATION = 0.90;
@@ -9,42 +8,15 @@ const MIN_MEANING_PRESERVATION = 0.90;
 const MAX_HUMANIZATION_ITERATIONS = 2;
 
 /**
- * Call Gemini API with a specific prompt and expected JSON output.
+ * Call Gemini API using centralized config
  */
 async function callGemini(prompt, text, maxTokens = 2048) {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error('AI humanization service is currently unavailable.');
-  }
-
   const fullPrompt = `${prompt}\n\nOriginal Text:\n"""\n${text}\n"""`;
-
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: fullPrompt }] }],
-        generationConfig: { 
-          responseMimeType: 'application/json', 
-          temperature: 0.7,
-          maxOutputTokens: maxTokens
-        }
-      })
-    });
-
-    if (!response.ok) {
-      console.error(`Gemini request failed with status: ${response.status}`);
-      throw new Error('AI humanization service is currently unavailable.');
-    }
-
-    const data = await response.json();
-    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    
-    if (!rawText) return null;
-    return JSON.parse(rawText);
+    return await callGeminiApi(fullPrompt, maxTokens, 0.7);
   } catch (err) {
-    console.error('Gemini API call failed:', err.message);
-    return null;
+    // humanizerService explicitly swallows internal throw and returns null for the orchestrator to handle
+    return null; 
   }
 }
 

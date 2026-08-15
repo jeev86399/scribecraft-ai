@@ -104,7 +104,7 @@ export function AIDetector() {
 
   const handleCopyReport = () => {
     if (!result) return;
-    const reportText = `ScribeCraft AI Content Detection Estimate:
+    const reportText = `ScribeCraft AI v2.0 Content Detection Estimate:
 Likelihood: ${result.aiLikelihood}% (${result.classificationLabel})
 Human Pattern Signal: ${result.humanLikelihood}%
 AI Pattern Signal: ${result.aiLikelihood}%

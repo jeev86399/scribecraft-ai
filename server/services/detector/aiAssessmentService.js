@@ -4,10 +4,10 @@
  * Uses temperature 0.0 for stable, deterministic responses.
  */
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+import { callGeminiApi, isGeminiConfigured } from '../aiConfig.js';
 
 export async function getAISemanticAssessment(text) {
-  if (!GEMINI_API_KEY || !text || text.trim().length < 40) {
+  if (!isGeminiConfigured() || !text || text.trim().length < 40) {
     return null; // Graceful fallback to statistical local ensemble
   }
 
@@ -29,27 +29,10 @@ Text to assess:
 ${text}
 """`;
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.0 }
-      }),
-      signal: AbortSignal.timeout(2500)
-    });
+    // Timeout is 2500ms
+    const parsed = await callGeminiApi(prompt, 2048, 0.0, 2500);
 
-    if (!response.ok) {
-      console.warn(`Gemini AI Assessment HTTP ${response.status}`);
-      return null;
-    }
-
-    const data = await response.json();
-    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!rawText) return null;
-
-    const parsed = JSON.parse(rawText);
-    if (typeof parsed.aiPatternSignal === 'number') {
+    if (parsed && typeof parsed.aiPatternSignal === 'number') {
       return {
         aiPatternSignal: Math.max(0, Math.min(100, Math.round(parsed.aiPatternSignal))),
         humanPatternSignal: Math.max(0, Math.min(100, Math.round(parsed.humanPatternSignal || (100 - parsed.aiPatternSignal)))),

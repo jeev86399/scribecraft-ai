@@ -9,6 +9,7 @@ import documentRoutes from './routes/documents.js';
 import analysisRoutes from './routes/analysis.js';
 import dictionaryRoutes from './routes/dictionary.js';
 import userRoutes from './routes/user.js';
+import statusRoutes from './routes/status.js';
 
 dotenv.config();
 
@@ -45,6 +46,7 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/dictionary', dictionaryRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/status', statusRoutes);
 
 // Centralized error handler
 app.use((err, req, res, next) => {

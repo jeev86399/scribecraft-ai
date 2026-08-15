@@ -81,7 +81,7 @@ export function Dashboard({ onOpenDoc }) {
             Ready to craft your next piece, {user?.name || 'Writer'}?
           </h2>
           <p style={{ fontSize: '0.95rem', color: '#e0e7ff', lineHeight: 1.5, opacity: 0.9 }}>
-            ScribeCraft AI is ready to analyze, polish, and optimize your writing in real time.
+            ScribeCraft AI v2.0 is ready to analyze, polish, and optimize your writing in real time.
           </p>
         </div>
 

@@ -18,7 +18,8 @@ export async function detectAIWithML(text, models = ['roberta_base']) {
   }
 
   try {
-    const ML_URL = process.env.ML_DETECTOR_URL || 'http://127.0.0.1:8000/detect';
+    const ML_URL = process.env.ML_DETECTOR_URL || 'http://127.0.0.1:8000';
+    const endpoint = `${ML_URL.replace(/\/$/, '')}/detect`;
     
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000);
@@ -56,7 +57,31 @@ export async function detectAIWithML(text, models = ['roberta_base']) {
     
     return data;
   } catch (error) {
-    console.error("ML Inference Failed, falling back to rule engine:", error.message);
+    console.error(`ML Inference Failed (${error.name}: ${error.message}). Falling back to rule engine.`);
     return { fallbackMode: true };
   }
 }
+
+/**
+ * Ping the ML Detector to see if it is online.
+ */
+export async function pingMLDetector() {
+  try {
+    const ML_URL = process.env.ML_DETECTOR_URL || 'http://127.0.0.1:8000';
+    const endpoint = `${ML_URL.replace(/\/$/, '')}/health`;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1500);
+    
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    return response.ok;
+  } catch (err) {
+    return false;
+  }
+}
+

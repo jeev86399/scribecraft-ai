@@ -40,9 +40,9 @@ export function Sidebar({ currentView, setCurrentView, onOpenDictionary, onOpenS
         }}>
           <Sparkles size={20} color="#ffffff" />
         </div>
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
           <h1 style={{ fontSize: '1.15rem', fontWeight: 700, letterSpacing: '-0.02em', color: '#ffffff' }}>
-            ScribeCraft<span style={{ color: '#818cf8', fontWeight: 800 }}>.AI</span>
+            ScribeCraft<span style={{ color: '#818cf8', fontWeight: 800 }}>.AI</span> <span style={{ fontSize: '0.65rem', padding: '2px 5px', backgroundColor: '#3730a3', color: '#e0e7ff', borderRadius: '12px', marginLeft: '4px', verticalAlign: 'middle', fontWeight: 'bold' }}>v2.0</span>
           </h1>
           <span style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Writing Assistant
