@@ -21,7 +21,7 @@ const INFORMAL_CONTRACTIONS = new Set([
 
 const ACADEMIC_CITATIONS = [
   /\bet al\.\b/i,
-  /\b(Smith|Johnson|Williams|Brown|Jones|Davis|Miller|Wilson|Moore|Taylor|Anderson|Thomas|Jackson|White|Harris|Martin|Thompson|Garcia|Martinez|Robinson)\s*\(?\d{4}\)?/i,
+  /\b[A-Z][a-z]+\s+\(\d{4}\)/, // Matches any Name (YYYY)
   /\b(Figure|Table|Section|Appendix)\s+\d+\b/i,
   /\bempirical (evidence|data|findings|analysis|results)\b/i,
   /\bstatistically significant\b/i,
@@ -30,7 +30,9 @@ const ACADEMIC_CITATIONS = [
   /\bsynaptic density\b/i,
   /\bp\s*[<=]\s*0?\.\d+\b/i,
   /\bstandard deviation\b/i,
-  /\bconfidence interval\b/i
+  /\bconfidence interval\b/i,
+  /\bin this paper\b/i,
+  /\b(we propose|we present|we demonstrate|we establish|we evaluate)\b/i
 ];
 
 export function analyzeStylometry(preprocessed) {

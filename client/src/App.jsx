@@ -10,6 +10,7 @@ import { AnalysisSidebar } from './components/sidebar/AnalysisSidebar.jsx';
 import { Dashboard } from './components/dashboard/Dashboard.jsx';
 import { Paraphraser } from './components/paraphraser/Paraphraser.jsx';
 import { AIDetector } from './components/detector/AIDetector.jsx';
+import { AIHumanizer } from './components/humanizer/AIHumanizer.jsx';
 
 import { RewriteModal } from './components/modals/RewriteModal.jsx';
 import { HistoryModal } from './components/modals/HistoryModal.jsx';
@@ -23,13 +24,13 @@ function MainAppContent() {
   // Read initial view from URL hash or default to 'editor'
   const getInitialView = () => {
     const hash = window.location.hash.replace('#', '');
-    if (['editor', 'dashboard', 'paraphraser', 'detector'].includes(hash)) {
+    if (['editor', 'dashboard', 'paraphraser', 'detector', 'humanizer'].includes(hash)) {
       return hash;
     }
     return 'editor';
   };
 
-  const [currentView, setCurrentView] = useState(getInitialView()); // 'editor' | 'dashboard' | 'paraphraser' | 'detector'
+  const [currentView, setCurrentView] = useState(getInitialView()); // 'editor' | 'dashboard' | 'paraphraser' | 'detector' | 'humanizer'
   const [theme, setTheme] = useState(localStorage.getItem('scribecraft_theme') || 'dark');
 
   // Modal dialog states
@@ -79,13 +80,15 @@ function MainAppContent() {
           toggleTheme={toggleTheme}
         />
 
-        {/* View Switcher: Editor vs Dashboard vs Paraphraser vs AI Detector */}
+        {/* View Switcher: Editor vs Dashboard vs Paraphraser vs AI Detector vs AI Humanizer */}
         {currentView === 'dashboard' ? (
           <Dashboard onOpenDoc={handleOpenDocFromDashboard} />
         ) : currentView === 'paraphraser' ? (
           <Paraphraser />
         ) : currentView === 'detector' ? (
           <AIDetector />
+        ) : currentView === 'humanizer' ? (
+          <AIHumanizer />
         ) : (
           <div className="content-workspace">
             <div className="editor-canvas-container">

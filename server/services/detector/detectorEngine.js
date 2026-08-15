@@ -7,7 +7,10 @@ import { analyzePredictability } from './predictabilityAnalyzer.js';
 import { analyzeStructure } from './structureAnalyzer.js';
 import { analyzeStylometry } from './stylometryAnalyzer.js';
 import { analyzeSemanticGenericness } from './semanticGenericnessAnalyzer.js';
-import { analyzeGenericExposition } from './genericExpositionAnalyzer.js';
+import { analyzeSemanticInterchangeability } from './semanticInterchangeabilityAnalyzer.js';
+import { analyzeEncyclopedicVoice } from './encyclopedicVoiceAnalyzer.js';
+import { analyzeTopicInvariantPattern } from './topicInvariantPatternAnalyzer.js';
+import { analyzeContentGenerationStyle } from './contentGenerationStyleAnalyzer.js';
 import { analyzeDiscoursePatterns } from './discoursePatternAnalyzer.js';
 import { analyzeCoherence } from './coherenceAnalyzer.js';
 import { analyzeHumanEvidence } from './humanEvidenceAnalyzer.js';
@@ -15,61 +18,82 @@ import { analyzeAuthorFingerprint } from './authorFingerprintAnalyzer.js';
 import { getAISemanticAssessment } from './aiAssessmentService.js';
 import { calibrateEnsemble } from './calibrationService.js';
 import { validateDetectorConsistency } from './consistencyValidator.js';
+import { detectAIWithML } from '../ml-detector-client.js';
+
+function extractSignals(text) {
+  const preprocessed = preprocessText(text);
+
+  if (preprocessed.wordCount < 15) {
+    return { isTooShort: true, wordCount: preprocessed.wordCount };
+  }
+
+  const genericnessRes = analyzeSemanticGenericness(preprocessed);
+  const interchangeabilityRes = analyzeSemanticInterchangeability(preprocessed);
+  const contentStyleRes = analyzeContentGenerationStyle(preprocessed);
+  const topicPatternRes = analyzeTopicInvariantPattern(preprocessed);
+  const predictabilityRes = analyzePredictability(preprocessed);
+  const encyclopedicVoiceRes = analyzeEncyclopedicVoice(preprocessed);
+  const stylometryRes = analyzeStylometry(preprocessed);
+  const humanEvidenceRes = analyzeHumanEvidence(preprocessed, stylometryRes);
+  const authorFingerprintRes = analyzeAuthorFingerprint(preprocessed, genericnessRes, humanEvidenceRes);
+  
+  return {
+    isTooShort: false,
+    preprocessed,
+    signals: {
+      sentence: analyzeSentenceLengths(preprocessed),
+      burstiness: analyzeBurstiness(preprocessed),
+      lexical: analyzeLexicalDiversity(preprocessed),
+      repetition: analyzeRepetition(preprocessed),
+      structure: analyzeStructure(preprocessed),
+      discourse: analyzeDiscoursePatterns(preprocessed),
+      coherence: analyzeCoherence(preprocessed),
+      genericness: genericnessRes,
+      interchangeability: interchangeabilityRes,
+      contentStyle: contentStyleRes,
+      topicPattern: topicPatternRes,
+      predictability: predictabilityRes,
+      encyclopedicVoice: encyclopedicVoiceRes,
+      stylometry: stylometryRes,
+      humanEvidence: humanEvidenceRes,
+      authorFingerprint: authorFingerprintRes
+    }
+  };
+}
 
 export async function detectAITextEnsemble(rawText, options = {}) {
-  // 1. Preprocess & Extract Structured Features
-  const preprocessed = preprocessText(rawText);
-
-  if (preprocessed.wordCount < 30) {
+  // 1. Multi-Level Processing (Document vs Paragraph)
+  const documentLevel = extractSignals(rawText);
+  if (documentLevel.isTooShort) {
     return {
       isTooShort: true,
-      wordCount: preprocessed.wordCount,
-      message: 'Not enough text for a reliable estimate. Please provide at least 30 words.'
+      wordCount: documentLevel.wordCount,
+      message: 'Not enough text for a reliable estimate. Please provide at least 15-30 words.'
     };
   }
 
-  // 2. Execute Independent Feature Analyzers
-  const sentenceRes = analyzeSentenceLengths(preprocessed);
-  const burstinessRes = analyzeBurstiness(preprocessed);
-  const lexicalRes = analyzeLexicalDiversity(preprocessed);
-  const repetitionRes = analyzeRepetition(preprocessed);
-  const predictabilityRes = analyzePredictability(preprocessed);
-  const structureRes = analyzeStructure(preprocessed);
-  const stylometryRes = analyzeStylometry(preprocessed);
-  const genericnessRes = analyzeSemanticGenericness(preprocessed);
-  const genericExpositionRes = analyzeGenericExposition(preprocessed);
-  const discourseRes = analyzeDiscoursePatterns(preprocessed);
-  const coherenceRes = analyzeCoherence(preprocessed);
-  const humanEvidenceRes = analyzeHumanEvidence(preprocessed, stylometryRes);
-  const authorFingerprintRes = analyzeAuthorFingerprint(preprocessed, genericnessRes, humanEvidenceRes);
+  // 2. Fetch ML Backend Results (V5 Hybrid Addition)
+  const mlResults = await detectAIWithML(rawText);
 
-  // 3. Execute Optional Backend Gemini Semantic Assessment
+  // 3. Execute Optional Backend Gemini Semantic Assessment (Legacy Family E)
   const semanticRes = await getAISemanticAssessment(rawText);
 
-  // 4. Calibrate Multi-Family Evidence Convergence Ensemble Output
-  const signals = {
-    sentence: sentenceRes,
-    burstiness: burstinessRes,
-    lexical: lexicalRes,
-    repetition: repetitionRes,
-    predictability: predictabilityRes,
-    structure: structureRes,
-    stylometry: stylometryRes,
-    genericness: genericnessRes,
-    genericExposition: genericExpositionRes,
-    discourse: discourseRes,
-    coherence: coherenceRes,
-    humanEvidence: humanEvidenceRes,
-    authorFingerprint: authorFingerprintRes
-  };
-
-  const calibrated = calibrateEnsemble(signals, preprocessed.wordCount, semanticRes, options.enableDiagnosticTrace || false);
+  // 4. Calibrate Hybrid Multi-Family Evidence Convergence Ensemble Output
+  const sensitivityMode = options.sensitivityMode || 'Balanced';
+  const calibrated = calibrateEnsemble(
+    documentLevel.signals, 
+    documentLevel.preprocessed.wordCount, 
+    semanticRes, 
+    mlResults,
+    options.enableDiagnosticTrace || true,
+    sensitivityMode
+  );
 
   // 5. Validate Detector Output Consistency
-  const validated = validateDetectorConsistency(calibrated, signals);
+  const validated = validateDetectorConsistency(calibrated, documentLevel.signals);
 
   return {
     ...validated,
-    metrics: signals
+    metrics: documentLevel.signals
   };
 }

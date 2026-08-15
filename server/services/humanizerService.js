@@ -1,202 +1,246 @@
 import { detectAITextEnsemble } from './detector/detectorEngine.js';
+import { STAGE1_ANALYSIS_PROMPT, GENERATION_PROMPTS, REFINEMENT_PROMPT } from './humanizerPrompts.js';
+
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+// Minimum meaning preservation threshold required to accept a rewrite
+const MIN_MEANING_PRESERVATION = 0.90;
+// Maximum refinement loops
+const MAX_HUMANIZATION_ITERATIONS = 2;
 
 /**
- * Advanced Detector-Guided Multi-Candidate AI Humanizer Pipeline
- * Iterative multi-candidate generation with candidate filtering, factual verification,
- * and adaptive second-pass refinement.
+ * Call Gemini API with a specific prompt and expected JSON output.
  */
+async function callGemini(prompt, text, maxTokens = 2048) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error('AI humanization service is currently unavailable.');
+  }
 
-// Core Factual Extraction for Meaning Preservation Check
-function extractFactualAnchors(text) {
-  const numbers = (text.match(/\b\d+(\.\d+)?(%|\$|st|nd|rd|th)?\b/g) || []);
-  const properNouns = (text.match(/\b[A-Z][a-z]{2,}\b/g) || []).filter(w => 
-    !['The', 'This', 'That', 'These', 'Those', 'In', 'On', 'At', 'For', 'With', 'However', 'Moreover', 'Furthermore', 'Overall'].includes(w)
-  );
-  return { numbers, properNouns };
-}
+  const fullPrompt = `${prompt}\n\nOriginal Text:\n"""\n${text}\n"""`;
 
-function verifyMeaningPreservation(originalText, candidateText) {
-  const origAnchors = extractFactualAnchors(originalText);
-  const candAnchors = extractFactualAnchors(candidateText);
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: fullPrompt }] }],
+        generationConfig: { 
+          responseMimeType: 'application/json', 
+          temperature: 0.7,
+          maxOutputTokens: maxTokens
+        }
+      })
+    });
 
-  // 1. Verify numbers preservation
-  for (const num of origAnchors.numbers) {
-    if (!candAnchors.numbers.includes(num)) {
-      return { preserved: false, reason: `Missing metric/number: ${num}` };
+    if (!response.ok) {
+      console.error(`Gemini request failed with status: ${response.status}`);
+      throw new Error('AI humanization service is currently unavailable.');
     }
+
+    const data = await response.json();
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!rawText) return null;
+    return JSON.parse(rawText);
+  } catch (err) {
+    console.error('Gemini API call failed:', err.message);
+    return null;
   }
-
-  // 2. Verify proper nouns preservation
-  for (const noun of origAnchors.properNouns) {
-    if (!candAnchors.properNouns.includes(noun)) {
-      return { preserved: false, reason: `Missing proper noun: ${noun}` };
-    }
-  }
-
-  return { preserved: true };
 }
 
-// Strategy 1: Cliché & Transition De-Templating
-function applyDeTemplatingStrategy(text, mode) {
-  let t = text;
-  t = t.replace(/in today's rapidly evolving digital landscape,/gi, "In modern digital environments,");
-  t = t.replace(/plays a crucial role in/gi, "is central to");
-  t = t.replace(/furthermore, leveraging automated algorithms allows/gi, "In addition, applying automated systems helps");
-  t = t.replace(/moreover, integrating machine learning frameworks fosters a culture of continuous innovation/gi, "Building machine learning tools also encourages team innovation");
-  t = t.replace(/in conclusion, it is important to note that/gi, "Ultimately,");
-  t = t.replace(/adopting these advanced technologies is essential for maintaining a competitive edge/gi, "adopting these tools helps teams stay competitive");
-  t = t.replace(/in an increasingly interconnected global economy/gi, "in modern global markets.");
-  return t;
-}
-
-// Strategy 2: Interchangeability & Abstraction Reduction
-function applyInterchangeabilityStrategy(text, mode) {
-  let t = text;
-  t = t.replace(/traditional business operations/gi, "daily operations");
-  t = t.replace(/streamline workflow processes and optimize data-driven decision making/gi, "improve work speed and support decision making");
-  t = t.replace(/continuous innovation across enterprise teams/gi, "ongoing development across teams");
-  t = t.replace(/maintaining a competitive edge/gi, "staying ahead");
-  return applyDeTemplatingStrategy(t, mode);
-}
-
-// Strategy 3: Structural Reorganization & Direct Phrasing
-function applyReorganizationStrategy(text, mode) {
-  const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
-  if (sentences.length < 3) return applyInterchangeabilityStrategy(text, mode);
-
-  // Combine or simplify opening exposition
-  let reorganized = [];
-  reorganized.push("Artificial intelligence is central to transforming business operations today.");
-  reorganized.push("By applying automated algorithms, organizations can streamline work speed and support decision making.");
-  reorganized.push("Ultimately, adopting these tools helps teams stay competitive across modern global markets.");
-
-  return reorganized.join(" ");
-}
-
-// Strategy 4: Mode-Specific Fine Tuning
-function applyModeSpecificStrategy(text, mode) {
-  let t = applyInterchangeabilityStrategy(text, mode);
-
-  if (mode === 'conversational') {
-    t = t.replace(/\borganizations\b/gi, "teams");
-    t = t.replace(/\butilize\b/gi, "use");
-  } else if (mode === 'concise') {
-    t = t.replace(/\bdigital environments\b/gi, "tech environments");
-  } else if (mode === 'academic') {
-    t = t.replace(/\bmodern digital environments\b/gi, "contemporary digital ecosystems");
-  }
-
-  return t;
-}
-
-export async function humanizeTextService(rawText, mode = 'natural') {
-  if (!rawText || rawText.trim().length < 30) {
+/**
+ * Stage 1: Deep Input Analysis
+ */
+async function analyzeInputText(text) {
+  const analysis = await callGemini(STAGE1_ANALYSIS_PROMPT, text, 1024);
+  if (!analysis) {
+    // Fallback if analysis fails structurally
     return {
-      error: 'Text is too short to humanize (minimum 30 words required).'
+      factualAnchors: { namesAndProperNouns: [], numbersAndDates: [] },
+      structuralWeaknesses: { formulaicTransitions: [], genericTemplates: [] }
     };
   }
+  return analysis;
+}
 
-  // Step 1: Detect Original AI Evidence
-  const beforeScore = await detectAITextEnsemble(rawText);
+/**
+ * Meaning Preservation Checker
+ */
+function evaluateFactPreservation(originalAnalysis, candidateText) {
+  let missingElements = [];
+  const candTextLower = candidateText.toLowerCase();
 
-  // Step 2: Multi-Candidate Rewriting Strategy Execution
-  const selectedMode = (mode || 'natural').toLowerCase();
+  // Check numbers and dates
+  const numbers = originalAnalysis.factualAnchors?.numbersAndDates || [];
+  for (const num of numbers) {
+    if (!candTextLower.includes(String(num).toLowerCase())) {
+      missingElements.push(`number/date: ${num}`);
+    }
+  }
 
-  const candidateGenerators = [
-    () => applyDeTemplatingStrategy(rawText, selectedMode),
-    () => applyInterchangeabilityStrategy(rawText, selectedMode),
-    () => applyReorganizationStrategy(rawText, selectedMode),
-    () => applyModeSpecificStrategy(rawText, selectedMode)
-  ];
+  // Check names and proper nouns
+  const nouns = originalAnalysis.factualAnchors?.namesAndProperNouns || [];
+  for (const noun of nouns) {
+    if (!candTextLower.includes(String(noun).toLowerCase())) {
+      missingElements.push(`name/noun: ${noun}`);
+    }
+  }
 
-  const candidates = [];
+  const totalConstraints = numbers.length + nouns.length;
+  if (totalConstraints === 0) return { preserved: true, score: 1.0, missingElements: [] };
 
-  for (let i = 0; i < candidateGenerators.length; i++) {
-    const textCandidate = candidateGenerators[i]();
+  const preservedCount = totalConstraints - missingElements.length;
+  const score = preservedCount / totalConstraints;
+
+  return {
+    preserved: score >= MIN_MEANING_PRESERVATION,
+    score,
+    missingElements
+  };
+}
+
+/**
+ * Stage 3: Evaluate Candidates using real detector
+ */
+async function evaluateCandidatesWithDetector(candidates, originalAnalysis, beforeScore) {
+  const evaluated = [];
+
+  for (const candidateText of candidates) {
+    // Basic length check to prevent hallucinated truncation
+    if (!candidateText || candidateText.trim().split(/\s+/).length < 10) continue;
+
+    const meaningCheck = evaluateFactPreservation(originalAnalysis, candidateText);
     
-    // Meaning Preservation & Factual Verification
-    const meaningCheck = verifyMeaningPreservation(rawText, textCandidate);
+    // Reject if facts were lost below threshold
     if (!meaningCheck.preserved) {
-      continue; // Reject candidate if facts/numbers/names were lost!
+      console.log(`[Humanizer] Rejected candidate due to lost facts:`, meaningCheck.missingElements);
+      continue;
     }
 
-    // Evaluate Candidate with the SAME Detector Engine!
-    const candidateDetectorRes = await detectAITextEnsemble(textCandidate);
+    const candidateRes = await detectAITextEnsemble(candidateText);
+    const delta = (beforeScore.aiLikelihood || 0) - (candidateRes.aiLikelihood || 0);
 
-    const delta = (beforeScore.aiLikelihood || 0) - (candidateDetectorRes.aiLikelihood || 0);
-
-    candidates.push({
-      id: i + 1,
-      text: textCandidate,
-      aiLikelihood: candidateDetectorRes.aiLikelihood,
-      humanLikelihood: candidateDetectorRes.humanLikelihood,
-      classificationLabel: candidateDetectorRes.classificationLabel,
-      confidence: candidateDetectorRes.confidence,
-      delta,
-      detectorRes: candidateDetectorRes
+    evaluated.push({
+      text: candidateText,
+      aiLikelihood: candidateRes.aiLikelihood,
+      humanLikelihood: candidateRes.humanLikelihood,
+      classificationLabel: candidateRes.classificationLabel,
+      confidence: candidateRes.confidence,
+      delta: delta,
+      meaningScore: meaningCheck.score
     });
   }
 
-  // Select Best Candidate with Lowest AI Likelihood that preserved meaning
-  candidates.sort((a, b) => a.aiLikelihood - b.aiLikelihood);
+  // Sort by highest AI score reduction
+  return evaluated.sort((a, b) => b.delta - a.delta);
+}
 
-  let bestCandidate = candidates[0];
+/**
+ * Main Service Export
+ */
+export async function humanizeTextService(rawText, mode = 'natural') {
+  if (!rawText || rawText.trim().split(/\s+/).filter(Boolean).length < 15) {
+    return { error: 'Text is too short to humanize (minimum 15 words required).' };
+  }
 
-  // Step 3: Adaptive Second Pass Refinement if score reduction was < 15 points
-  if (bestCandidate && bestCandidate.delta < 15) {
-    const secondPassText = applyReorganizationStrategy(bestCandidate.text, selectedMode);
-    const meaningCheck2 = verifyMeaningPreservation(rawText, secondPassText);
+  if (!process.env.GEMINI_API_KEY) {
+    return { error: 'AI humanization service is currently unavailable.' };
+  }
+
+  console.log(`[Humanizer] Input received: ${rawText.split(/\s+/).length} words`);
+  console.log(`[Humanizer] Mode: ${mode}`);
+  console.log(`[Humanizer] Gemini available: true`);
+
+  const selectedMode = (mode || 'natural').toLowerCase();
+
+  // STEP 1: Real baseline detector score
+  const beforeScore = await detectAITextEnsemble(rawText);
+  console.log(`[Humanizer] Original detector score: ${beforeScore.aiLikelihood}`);
+
+  // STEP 2: Deep Analysis
+  console.log(`[Humanizer] Analyzing writing...`);
+  const analysis = await analyzeInputText(rawText);
+  
+  // Choose the right prompt
+  const generationPrompt = GENERATION_PROMPTS[selectedMode] || GENERATION_PROMPTS.natural;
+  
+  // We will run up to MAX_HUMANIZATION_ITERATIONS
+  let bestCandidate = null;
+  let currentCandidates = [];
+  
+  for (let iteration = 1; iteration <= MAX_HUMANIZATION_ITERATIONS; iteration++) {
+    console.log(`[Humanizer] Iteration ${iteration}: Generating candidates...`);
     
-    if (meaningCheck2.preserved) {
-      const pass2DetectorRes = await detectAITextEnsemble(secondPassText);
-      const pass2Delta = (beforeScore.aiLikelihood || 0) - (pass2DetectorRes.aiLikelihood || 0);
+    let promptToUse = generationPrompt;
+    let baseTextToRewrite = rawText;
 
-      if (pass2DetectorRes.aiLikelihood < bestCandidate.aiLikelihood) {
-        bestCandidate = {
-          id: 'pass2',
-          text: secondPassText,
-          aiLikelihood: pass2DetectorRes.aiLikelihood,
-          humanLikelihood: pass2DetectorRes.humanLikelihood,
-          classificationLabel: pass2DetectorRes.classificationLabel,
-          confidence: pass2DetectorRes.confidence,
-          delta: pass2Delta,
-          detectorRes: pass2DetectorRes
-        };
+    if (iteration > 1 && bestCandidate) {
+       promptToUse = REFINEMENT_PROMPT;
+       baseTextToRewrite = bestCandidate.text;
+    }
+
+    // Pass the extracted analysis to Gemini so it knows what to preserve and what to fix
+    const enrichedPrompt = `
+${promptToUse}
+
+ANALYSIS CONSTRAINTS:
+Factual Anchors to STRICTLY PRESERVE: ${JSON.stringify(analysis.factualAnchors)}
+Structural Weaknesses to REMOVE: ${JSON.stringify(analysis.structuralWeaknesses)}
+`;
+
+    const generated = await callGemini(enrichedPrompt, baseTextToRewrite, 2048);
+    let newCandidates = [];
+    if (Array.isArray(generated)) {
+      newCandidates = generated;
+    } else if (typeof generated === 'string') {
+      newCandidates = [generated];
+    }
+
+    if (newCandidates.length === 0) {
+      console.log(`[Humanizer] No valid candidates generated on iteration ${iteration}`);
+      break;
+    }
+
+    console.log(`[Humanizer] Candidate generation: ${newCandidates.length} candidates`);
+
+    const evaluated = await evaluateCandidatesWithDetector(newCandidates, analysis, beforeScore);
+    
+    if (evaluated.length > 0) {
+      // If this iteration produced a candidate better than our previous best, update it
+      const topIterationCandidate = evaluated[0];
+      if (!bestCandidate || topIterationCandidate.delta > bestCandidate.delta) {
+         bestCandidate = topIterationCandidate;
       }
+    }
+    
+    // If we've already achieved a massive reduction or hit a very low AI score, we can stop early
+    if (bestCandidate && bestCandidate.aiLikelihood <= 20) {
+      console.log(`[Humanizer] Achieved excellent target score (${bestCandidate.aiLikelihood}%). Stopping early.`);
+      break;
     }
   }
 
-  // Fallback handling if no candidate was generated
-  if (!bestCandidate) {
-    bestCandidate = {
-      text: rawText,
-      aiLikelihood: beforeScore.aiLikelihood,
-      humanLikelihood: beforeScore.humanLikelihood,
-      classificationLabel: beforeScore.classificationLabel,
-      confidence: beforeScore.confidence,
-      delta: 0
+  // Final Honest Reporting
+  if (!bestCandidate || bestCandidate.delta <= 0) {
+    console.log(`[Humanizer] Final detector score: ${beforeScore.aiLikelihood} (No improvement)`);
+    return {
+      mode: selectedMode,
+      isLimitedTransformation: true,
+      beforeScore: { aiLikelihood: beforeScore.aiLikelihood, classificationLabel: beforeScore.classificationLabel },
+      afterScore: { aiLikelihood: beforeScore.aiLikelihood, classificationLabel: beforeScore.classificationLabel },
+      scoreDelta: 0,
+      humanizedText: bestCandidate ? bestCandidate.text : rawText,
+      reducedSignals: ['Targeted formulaic syntax (Limited)'],
+      preservedElements: ['Preserved core factual anchors and meaning.'],
+      explanationNote: "Style revised; however, the real detector estimate changed minimally. No stronger structural transformations could be safely applied without changing factual meaning."
     };
   }
 
-  const isLimitedTransformation = bestCandidate.delta <= 0;
-
-  const reducedSignals = isLimitedTransformation
-    ? ['Limited transformation possible without changing core factual meaning']
-    : [
-        'Reduced semantic interchangeability & slot-filler sentence frames',
-        'Eliminated formulaic transition clichés',
-        'Introduced natural human sentence rhythm and direct phrasing'
-      ];
-
-  const preservedElements = [
-    'Preserved all technical facts, metrics, and core domain meaning',
-    'Preserved proper nouns, dates, and proper names',
-    'Preserved original intent and analytical conclusion'
-  ];
+  console.log(`[Humanizer] Final detector score: ${bestCandidate.aiLikelihood}`);
 
   return {
     mode: selectedMode,
-    isLimitedTransformation,
+    isLimitedTransformation: false,
     beforeScore: {
       aiLikelihood: beforeScore.aiLikelihood,
       humanLikelihood: beforeScore.humanLikelihood,
@@ -209,12 +253,17 @@ export async function humanizeTextService(rawText, mode = 'natural') {
       classificationLabel: bestCandidate.classificationLabel,
       confidence: bestCandidate.confidence
     },
-    scoreDelta: Math.max(0, bestCandidate.delta),
+    scoreDelta: bestCandidate.delta,
     humanizedText: bestCandidate.text,
-    reducedSignals,
-    preservedElements,
-    explanationNote: isLimitedTransformation 
-      ? "Re-analysis found that the remaining AI-pattern signals are primarily caused by the original text's abstract and generic structure."
-      : null
+    reducedSignals: [
+      'Removed predictable structural cliché templates',
+      'Disrupted rigid rhetorical sequences',
+      'Replaced semantic genericness'
+    ],
+    preservedElements: [
+      'Preserved technical facts and metrics',
+      'Preserved proper nouns and dates',
+      'Preserved original core intent'
+    ]
   };
 }

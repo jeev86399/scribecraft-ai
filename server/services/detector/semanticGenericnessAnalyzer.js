@@ -1,121 +1,85 @@
 /**
- * Semantic Genericness & Grounded Detail Analyzer
- * Clearly distinguishes Topical Context (broad industry lists like "healthcare, education, finance")
- * from Author-Specific Grounded Detail (numbers, specific named entities, personal experiences).
+ * Semantic Genericness Analyzer (Domain-Independent)
+ * Separates "Abstract Genericness" (innovation, paradigm) from 
+ * "Contextual Genericness" (broad everyday terms used in slot-filler ways like "lunch, salads, body, friends").
  */
 
-const GENERIC_EXPOSITORY_PATTERNS = [
-  'plays a crucial role in',
-  'play a crucial role in',
-  'is essential for',
-  'are essential for',
-  'has a profound impact on',
-  'have a profound impact on',
-  'serves as a foundation for',
-  'serve as a foundation for',
-  'in an increasingly interconnected',
-  'in an increasingly digital',
-  'various factors contribute to',
-  'it is important to understand',
-  'it is crucial to recognize',
-  'a wide range of',
-  'significant implications for',
-  'key aspect of',
-  'fundamental element of',
-  'integral part of',
-  'vital role in'
-];
+// A broad list of highly abstract words often used as semantic filler across domains
+const ABSTRACT_FILLER = new Set([
+  'innovation', 'transformation', 'efficiency', 'optimization', 'opportunities', 
+  'challenges', 'landscape', 'environment', 'ecosystem', 'framework', 'sustainability',
+  'accountability', 'responsibility', 'advancement', 'integration', 'synergy'
+]);
+
+// Context-dependent filler words that might refer to any domain (food, health, business, etc.)
+// e.g. "vital", "essential", "crucial", "variety", "diverse", "impact", "promote", "overall"
+const CONTEXTUAL_FILLER = new Set([
+  'vital', 'essential', 'crucial', 'important', 'significant', 'profound',
+  'variety', 'diverse', 'multiple', 'various', 'numerous', 'impact', 'influence',
+  'promote', 'foster', 'encourage', 'support', 'overall', 'general', 'broad',
+  'well-being', 'productivity', 'success', 'growth', 'development', 'connection',
+  'satisfying', 'appealing', 'beneficial', 'advantageous', 'fundamental', 'integral',
+  'engaging', 'captivating', 'compelling', 'thoughtful', 'genuine', 'authentic',
+  'authenticity', 'discoverability', 'resonance', 'meaningful', 'striking', 'blend',
+  'showcase', 'elevate', 'seamless', 'tailored', 'unprecedented', 'empower'
+]);
 
 export function analyzeSemanticGenericness(preprocessed) {
-  const { normalizedText, words, cleanWords, wordCount } = preprocessed;
+  const { normalizedText, cleanWords, wordCount } = preprocessed;
   if (!normalizedText || wordCount < 15) {
     return {
       genericnessScore: 0,
-      detectedGenericPatterns: [],
-      specificityDensity: 0,
-      topicalContextLevel: 'None',
-      authorDetailLevel: 'Low',
+      abstractDensity: 0,
+      contextualDensity: 0,
       signalScore: 10,
-      rating: 'Author-Specific Grounded Detail',
+      rating: 'Specific Context',
       explanation: 'Insufficient text to evaluate semantic genericness.'
     };
   }
 
-  const lowerText = normalizedText.toLowerCase();
+  let abstractCount = 0;
+  let contextualCount = 0;
 
-  // 1. Detect Generic Expository Patterns
-  const detectedPatterns = [];
-  let genericCount = 0;
-
-  for (const pattern of GENERIC_EXPOSITORY_PATTERNS) {
-    const regex = new RegExp(`\\b${pattern.replace(/'/g, "\\'")}\\b`, 'gi');
-    const matches = lowerText.match(regex);
-    if (matches) {
-      genericCount += matches.length;
-      if (!detectedPatterns.includes(pattern)) {
-        detectedPatterns.push(pattern);
-      }
-    }
-  }
-
-  // 2. Separate Topical Context vs Author-Specific Grounded Detail
-  const genericSectors = new Set(['healthcare', 'education', 'finance', 'manufacturing', 'retail', 'transportation', 'technology', 'business', 'industry']);
-  
-  let topicalSectorCount = 0;
   for (const word of cleanWords) {
-    if (genericSectors.has(word)) {
-      topicalSectorCount++;
-    }
+    const w = word.toLowerCase();
+    if (ABSTRACT_FILLER.has(w)) abstractCount++;
+    if (CONTEXTUAL_FILLER.has(w)) contextualCount++;
   }
 
-  const numbersAndDates = (normalizedText.match(/\b\d+(\.\d+)?(%|\$|st|nd|rd|th)?\b/g) || []).length;
-  
-  const rawProperNouns = (normalizedText.match(/\b[A-Z][a-z]{2,}\b/g) || []).filter(w => 
-    !['The', 'This', 'That', 'These', 'Those', 'In', 'On', 'At', 'For', 'With', 'However', 'Moreover', 'Furthermore', 'Overall', 'Artificial', 'Intelligence', 'Digital', 'Technology'].includes(w) &&
-    !genericSectors.has(w.toLowerCase())
-  ).length;
+  const abstractDensity = wordCount > 0 ? (abstractCount / (wordCount / 100)) : 0;
+  const contextualDensity = wordCount > 0 ? (contextualCount / (wordCount / 100)) : 0;
 
-  const authorSpecificityScore = numbersAndDates * 1.5 + rawProperNouns * 1.0;
-  const specificityDensity = wordCount > 0 ? (authorSpecificityScore / (wordCount / 100)) : 0;
+  // A genericness score driven by both abstract words and domain-agnostic filler
+  const combinedDensity = abstractDensity + (contextualDensity * 0.75);
 
-  let topicalContextLevel = 'Low';
-  if (topicalSectorCount >= 3) topicalContextLevel = 'High Industry Enumeration';
-  else if (topicalSectorCount >= 1) topicalContextLevel = 'Moderate Topical Reference';
-
-  let authorDetailLevel = 'Low';
-  if (specificityDensity >= 1.5) authorDetailLevel = 'High Author Grounded Detail';
-  else if (specificityDensity >= 0.5) authorDetailLevel = 'Moderate Specific Detail';
-
-  // 3. Compute Genericness Signal Score
   let signalScore = 10;
-  if (genericCount >= 3 || (genericCount >= 2 && specificityDensity < 0.5)) {
-    signalScore = 90;
-  } else if (genericCount >= 2 || (genericCount >= 1 && specificityDensity < 1.0)) {
-    signalScore = 75;
-  } else if (genericCount >= 1) {
-    signalScore = 50;
+  if (combinedDensity >= 8.0) {
+    signalScore = 90; // Extremely high genericness
+  } else if (combinedDensity >= 5.0) {
+    signalScore = 75; // High genericness
+  } else if (combinedDensity >= 3.0) {
+    signalScore = 50; // Moderate genericness
+  } else {
+    signalScore = 20; // Low genericness
   }
 
-  let rating = 'Author-Specific Grounded Detail';
+  let rating = 'Specific Context';
   if (signalScore >= 75) {
-    rating = topicalSectorCount >= 2 ? 'Broad Industry Enumeration without Personal Detail' : 'Broad Abstract Claims with Low Specificity';
+    rating = abstractDensity > contextualDensity ? 'High Abstract Genericness' : 'High Contextual Genericness';
   } else if (signalScore >= 50) {
-    rating = 'Moderate Expository Genericness';
+    rating = 'Moderate Genericness';
   }
 
-  let explanation = 'Text contains specific grounded details and concrete human references.';
+  let explanation = 'Text contains specific, non-generic terminology.';
   if (signalScore >= 75) {
-    explanation = topicalSectorCount >= 2 
-      ? `Text enumerates broad sectors (${topicalSectorCount} industry terms) without personal/author-specific grounded detail.`
-      : `Text consists of broad abstract claims with low personal/author-specific detail (${specificityDensity.toFixed(1)} specificity density).`;
+    explanation = `High semantic genericness detected (${abstractDensity.toFixed(1)} abstract/100w, ${contextualDensity.toFixed(1)} contextual/100w). Text relies heavily on broadly applicable filler.`;
   }
 
   return {
     genericnessScore: signalScore,
-    detectedGenericPatterns: detectedPatterns,
-    specificityDensity: Math.round(specificityDensity * 10) / 10,
-    topicalContextLevel,
-    authorDetailLevel,
+    abstractDensity: Math.round(abstractDensity * 10) / 10,
+    contextualDensity: Math.round(contextualDensity * 10) / 10,
+    combinedDensity: Math.round(combinedDensity * 10) / 10,
     signalScore,
     rating,
     explanation

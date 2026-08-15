@@ -51,9 +51,11 @@ export const api = {
   rewriteText: (text, goal, targetTone) => request('/analysis/rewrite', { method: 'POST', body: JSON.stringify({ text, goal, targetTone }) }),
   paraphrase: (text, mode) => request('/analysis/paraphrase', { method: 'POST', body: JSON.stringify({ text, mode }) }),
   detectAI: (text) => request('/analysis/detect-ai', { method: 'POST', body: JSON.stringify({ text }) }),
-  humanizeText: (text) => request('/analysis/humanize', { method: 'POST', body: JSON.stringify({ text }) }),
+  humanizeText: (text, mode) => request('/analysis/humanize', { method: 'POST', body: JSON.stringify({ text, mode }) }),
   getAIDetectionHistory: () => request('/analysis/detect-ai/history'),
   deleteAIDetectionHistory: (id) => request(`/analysis/detect-ai/history/${id}`, { method: 'DELETE' }),
+  getAIHumanizationHistory: () => request('/analysis/humanize/history'),
+  deleteAIHumanizationHistory: (id) => request(`/analysis/humanize/history/${id}`, { method: 'DELETE' }),
 
   // Dictionary
   listDictionary: () => request('/dictionary'),

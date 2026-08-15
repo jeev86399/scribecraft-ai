@@ -118,5 +118,19 @@ export async function initDb() {
     );
   `);
 
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS ai_humanizations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      original_text TEXT NOT NULL,
+      humanized_text TEXT NOT NULL,
+      mode TEXT NOT NULL,
+      before_score_likelihood INTEGER,
+      after_score_likelihood INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
   console.log('Database initialized successfully at:', dbPath);
 }

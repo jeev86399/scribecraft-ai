@@ -118,13 +118,33 @@ export async function detectAI(req, res) {
 
 export async function humanizeText(req, res) {
   try {
-    const { text } = req.body;
+    const { text, mode } = req.body;
+    const userId = req.user ? req.user.id : null;
 
     if (text === undefined || text === null || typeof text !== 'string') {
       return res.status(400).json({ error: 'Text to humanize is required.' });
     }
 
-    const result = await humanizeTextService(text);
+    const result = await humanizeTextService(text, mode);
+    
+    // Save history for authenticated users
+    if (userId && !result.error && result.humanizedText) {
+      const id = `hum_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+      await db.run(
+        `INSERT INTO ai_humanizations (id, user_id, original_text, humanized_text, mode, before_score_likelihood, after_score_likelihood)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          userId,
+          text,
+          result.humanizedText,
+          result.mode || 'natural',
+          result.beforeScore?.aiLikelihood || null,
+          result.afterScore?.aiLikelihood || null
+        ]
+      );
+    }
+
     return res.json(result);
   } catch (err) {
     console.error('Humanize text error:', err);
@@ -162,5 +182,32 @@ export async function deleteAIDetectionHistory(req, res) {
   } catch (err) {
     console.error('Delete AI detection history error:', err);
     return res.status(500).json({ error: 'Failed to delete detection record.' });
+  }
+}
+
+export async function getAIHumanizationHistory(req, res) {
+  try {
+    const userId = req.user.id;
+    const history = await db.all(
+      'SELECT id, original_text, humanized_text, mode, before_score_likelihood, after_score_likelihood, created_at FROM ai_humanizations WHERE user_id = ? ORDER BY created_at DESC LIMIT 20',
+      [userId]
+    );
+    return res.json(history);
+  } catch (err) {
+    console.error('Get AI humanization history error:', err);
+    return res.status(500).json({ error: 'Failed to fetch humanization history.' });
+  }
+}
+
+export async function deleteAIHumanizationHistory(req, res) {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    await db.run('DELETE FROM ai_humanizations WHERE id = ? AND user_id = ?', [id, userId]);
+    return res.json({ message: 'History record deleted.', id });
+  } catch (err) {
+    console.error('Delete AI humanization history error:', err);
+    return res.status(500).json({ error: 'Failed to delete humanization record.' });
   }
 }

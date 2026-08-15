@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -9,27 +9,42 @@ import {
   Loader2, 
   Info,
   History,
-  Wand2,
   Cpu,
   ArrowRight
 } from 'lucide-react';
 import { api } from '../../services/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 
+// Utility for debounce
+function useDebounce(value, delay) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+  return debouncedValue;
+}
+
 export function AIDetector() {
   const { isAuthenticated } = useAuth();
 
   const [text, setText] = useState('');
-  const [humanizeMode, setHumanizeMode] = useState('natural');
+  const debouncedText = useDebounce(text, 800); // 800ms Debounce for real-time detection
+
   const [loading, setLoading] = useState(false);
-  const [humanizing, setHumanizing] = useState(false);
   const [result, setResult] = useState(null);
-  const [humanizerResult, setHumanizerResult] = useState(null);
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [sensitivityMode, setSensitivityMode] = useState('Balanced');
 
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  
+  const abortControllerRef = useRef(null);
 
   const wordCount = text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
 
@@ -44,50 +59,48 @@ export function AIDetector() {
   };
 
   useEffect(() => {
-    if (isAuthenticated) {
-      loadHistory();
-    }
+    if (isAuthenticated) loadHistory();
   }, [isAuthenticated]);
 
-  const handleDetect = async () => {
-    if (!text.trim()) return;
-    setLoading(true);
-    setError(null);
-    setHumanizerResult(null);
-    try {
-      const data = await api.detectAI(text);
-      setResult(data);
-      if (isAuthenticated && !data.isTooShort) {
-        loadHistory();
+  // Real-time Detection Effect
+  useEffect(() => {
+    const runRealTimeDetection = async () => {
+      if (!debouncedText.trim() || debouncedText.trim().split(/\s+/).filter(Boolean).length < 15) {
+        setResult(null); // Clear or ignore if too short
+        return;
       }
-    } catch (err) {
-      setError(err.message || 'AI detection failed.');
-    } finally {
-      setLoading(false);
-    }
-  };
+      
+      // Cancel previous stale request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
 
-  const handleHumanize = async () => {
-    if (!text.trim()) return;
-    setHumanizing(true);
-    setError(null);
-    try {
-      const data = await api.humanizeText(text, humanizeMode);
-      setHumanizerResult(data);
-      setText(data.humanizedText);
-      setResult(prev => ({
-        ...(prev || {}),
-        aiLikelihood: data.afterScore.aiLikelihood,
-        humanLikelihood: data.afterScore.humanLikelihood,
-        classificationLabel: data.afterScore.classificationLabel,
-        confidence: data.afterScore.confidence
-      }));
-    } catch (err) {
-      setError(err.message || 'Humanization failed.');
-    } finally {
-      setHumanizing(false);
-    }
-  };
+      setLoading(true);
+      setError(null);
+
+      try {
+        const data = await api.detectAI(debouncedText, { sensitivityMode, signal: abortControllerRef.current.signal });
+        setResult(data);
+        if (isAuthenticated && !data.isTooShort) {
+          loadHistory();
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setError(err.message || 'AI detection failed.');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    runRealTimeDetection();
+
+    return () => {
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+    };
+  }, [debouncedText]); // Dependency on debounced text
+
 
   const handleCopyReport = () => {
     if (!result) return;
@@ -115,7 +128,6 @@ Disclaimer: ${result.disclaimer}`;
   const handleClear = () => {
     setText('');
     setResult(null);
-    setHumanizerResult(null);
     setError(null);
   };
 
@@ -147,11 +159,11 @@ Disclaimer: ${result.disclaimer}`;
               <ShieldCheck size={22} color="#ffffff" />
             </div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
-              AI Content Detector & Humanizer
+              AI Content Detector
             </h2>
           </div>
           <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Multi-family statistical evidence convergence system & 5-mode writing humanizer.
+            Dynamic Multi-Domain Analysis & Live Real-Time Detection
           </p>
         </div>
 
@@ -179,7 +191,7 @@ Disclaimer: ${result.disclaimer}`;
       </div>
 
       {/* Main Grid Layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: result ? '1fr 460px' : '1fr', gap: '1.75rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: result || loading ? '1fr 460px' : '1fr', gap: '1.75rem', transition: 'grid-template-columns 0.3s ease' }}>
         {/* Left Side: Input Canvas */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div style={{
@@ -202,7 +214,10 @@ Disclaimer: ${result.disclaimer}`;
               fontSize: '0.82rem',
               color: 'var(--text-muted)'
             }}>
-              <span>{wordCount} words</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {wordCount} words
+                {loading && <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />}
+              </span>
 
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
@@ -245,7 +260,7 @@ Disclaimer: ${result.disclaimer}`;
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Paste or type text here to analyze writing pattern characteristics (minimum 30 words recommended)..."
+              placeholder="Start typing or paste text here for real-time analysis (minimum 15-30 words)..."
               style={{
                 width: '100%',
                 height: '340px',
@@ -262,137 +277,42 @@ Disclaimer: ${result.disclaimer}`;
             />
           </div>
 
-          {/* Mode Selector for Humanizer */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginRight: '0.25rem' }}>
-              Humanizer Mode:
-            </span>
-            {['natural', 'professional', 'academic', 'conversational', 'concise'].map(m => (
-              <button
-                key={m}
-                onClick={() => setHumanizeMode(m)}
-                style={{
-                  padding: '0.35rem 0.75rem',
-                  borderRadius: '9999px',
-                  border: humanizeMode === m ? '1px solid #10b981' : '1px solid var(--border-color)',
-                  backgroundColor: humanizeMode === m ? 'rgba(16,185,129,0.12)' : 'var(--bg-surface)',
-                  color: humanizeMode === m ? '#10b981' : 'var(--text-muted)',
-                  fontSize: '0.78rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  textTransform: 'capitalize'
-                }}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <button
-              onClick={handleDetect}
-              disabled={loading || humanizing || !text.trim()}
-              style={{
-                flex: 1,
-                padding: '0.85rem 1.5rem',
-                borderRadius: '12px',
-                backgroundColor: 'var(--primary)',
-                color: '#ffffff',
-                border: 'none',
-                fontWeight: 700,
-                fontSize: '0.95rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                boxShadow: '0 4px 14px rgba(79,70,229,0.3)',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              {loading ? (
-                <>
-                  <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
-                  Analyzing Multi-Family Convergence...
-                </>
-              ) : (
-                <>
-                  <Cpu size={18} />
-                  Detect AI
-                </>
-              )}
-            </button>
-
-            <button
-              onClick={handleHumanize}
-              disabled={loading || humanizing || !text.trim()}
-              style={{
-                padding: '0.85rem 1.5rem',
-                borderRadius: '12px',
-                backgroundColor: '#10b981',
-                color: '#ffffff',
-                border: 'none',
-                fontWeight: 700,
-                fontSize: '0.95rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                boxShadow: '0 4px 14px rgba(16,185,129,0.3)',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              {humanizing ? (
-                <>
-                  <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
-                  Humanizing ({humanizeMode})...
-                </>
-              ) : (
-                <>
-                  <Wand2 size={18} />
-                  Humanize Writing
-                </>
-              )}
-            </button>
+          {/* Sensitivity and Mode Selectors */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {/* Sensitivity Mode */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginRight: '0.25rem' }}>
+                Detection Sensitivity:
+              </span>
+              {['Conservative', 'Balanced', 'Strict'].map(m => (
+                <button
+                  key={m}
+                  onClick={() => {
+                    setSensitivityMode(m);
+                    setResult(null); // Clear result to force re-detection on mode change
+                  }}
+                  style={{
+                    padding: '0.35rem 0.75rem',
+                    borderRadius: '9999px',
+                    border: sensitivityMode === m ? '1px solid #6366f1' : '1px solid var(--border-color)',
+                    backgroundColor: sensitivityMode === m ? 'rgba(99,102,241,0.12)' : 'var(--bg-surface)',
+                    color: sensitivityMode === m ? '#6366f1' : 'var(--text-muted)',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textTransform: 'capitalize'
+                  }}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
           </div>
 
           {error && (
             <p style={{ fontSize: '0.85rem', color: 'var(--color-spelling)' }}>
               {error}
             </p>
-          )}
-
-          {/* Before / After Humanization Result Card */}
-          {humanizerResult && (
-            <div style={{ padding: '1.25rem', borderRadius: '16px', backgroundColor: 'rgba(16,185,129,0.08)', border: '1px solid #10b981', color: 'var(--text-main)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 700 }}>
-                  <Wand2 size={18} />
-                  <span style={{ textTransform: 'capitalize' }}>Writing Humanized ({humanizerResult.mode} mode)</span>
-                </div>
-                <span style={{ fontSize: '0.78rem', fontWeight: 700, padding: '0.2rem 0.55rem', borderRadius: '9999px', backgroundColor: 'rgba(16,185,129,0.2)', color: '#10b981' }}>
-                  -{humanizerResult.scoreDelta} pts
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '0.75rem 0', fontSize: '0.9rem', fontWeight: 700 }}>
-                <span style={{ color: 'var(--color-spelling)' }}>
-                  Before: {humanizerResult.beforeScore.aiLikelihood}% AI
-                </span>
-                <ArrowRight size={16} />
-                <span style={{ color: '#10b981' }}>
-                  After: {humanizerResult.afterScore.aiLikelihood}% AI
-                </span>
-              </div>
-
-              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                {(humanizerResult.reducedSignals || []).map((sig, idx) => (
-                  <li key={idx}>✓ {sig}</li>
-                ))}
-              </ul>
-            </div>
           )}
 
           {/* User History Drawer */}
@@ -470,6 +390,35 @@ Disclaimer: ${result.disclaimer}`;
                     </span>
 
                     <div style={{ display: 'flex', gap: '0.35rem' }}>
+                      {result.isMlActive && (
+                        <span style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: '9999px',
+                          backgroundColor: 'rgba(59,130,246,0.12)',
+                          color: '#3b82f6',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem'
+                        }}>
+                          <Cpu size={12} /> ML Ensemble
+                        </span>
+                      )}
+                      
+                      {!result.isMlActive && (
+                         <span style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: '9999px',
+                          backgroundColor: 'rgba(107,114,128,0.12)',
+                          color: '#6b7280'
+                        }}>
+                          Rule Engine Only
+                        </span>
+                      )}
+
                       <span style={{
                         fontSize: '0.72rem',
                         fontWeight: 700,
@@ -551,26 +500,6 @@ Disclaimer: ${result.disclaimer}`;
                       <Copy size={14} />
                       {copied ? 'Copied Summary!' : 'Copy Summary'}
                     </button>
-
-                    <button
-                      onClick={handleDetect}
-                      style={{
-                        padding: '0.5rem 0.85rem',
-                        borderRadius: '8px',
-                        backgroundColor: 'var(--primary)',
-                        color: '#ffffff',
-                        border: 'none',
-                        fontWeight: 600,
-                        fontSize: '0.82rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.35rem'
-                      }}
-                    >
-                      <RotateCcw size={14} />
-                      Re-Analyze
-                    </button>
                   </div>
                 </div>
 
@@ -584,7 +513,7 @@ Disclaimer: ${result.disclaimer}`;
                     {(result.keySignals || []).map((sig, idx) => (
                       <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', paddingBottom: '0.4rem', borderBottom: idx < result.keySignals.length - 1 ? '1px solid var(--border-color)' : 'none' }}>
                         <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{sig.name}</span>
-                        <span style={{ fontWeight: 600, color: sig.level.includes('Formulaic') || sig.level.includes('Generic') || sig.level.includes('Template') || sig.level.includes('Anonymous') ? 'var(--color-spelling)' : '#10b981' }}>
+                        <span style={{ fontWeight: 600, color: sig.level.includes('Formulaic') || sig.level.includes('Generic') || sig.level.includes('Template') || sig.level.includes('Anonymous') || sig.level === 'AI-Pattern' ? 'var(--color-spelling)' : '#10b981' }}>
                           {sig.result}
                         </span>
                       </div>
@@ -607,6 +536,14 @@ Disclaimer: ${result.disclaimer}`;
                     ))}
                   </ul>
                 </div>
+                
+                {/* Diagnostic Trace Section (Only shown if diagnostic trace is returned by backend) */}
+                {result.diagnosticTrace && (
+                  <div style={{ padding: '1rem', borderRadius: '12px', backgroundColor: '#1e293b', border: '1px solid #334155', color: '#94a3b8', fontSize: '0.7rem', overflowX: 'auto', whiteSpace: 'pre' }}>
+                    <div style={{ fontWeight: 700, color: '#f8fafc', marginBottom: '0.5rem' }}>DEVELOPMENT DIAGNOSTIC TRACE</div>
+                    {result.diagnosticTrace.trim()}
+                  </div>
+                )}
 
                 {/* Disclaimer Alert */}
                 <div style={{ padding: '1rem', borderRadius: '12px', backgroundColor: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)', display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>

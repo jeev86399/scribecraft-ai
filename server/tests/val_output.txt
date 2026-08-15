@@ -1,0 +1,38 @@
+==================================================
+   SCRIBECRAFT AI - FINAL VALIDATION AUDIT V5     
+==================================================
+
+1. GENERALIZATION & OVERFITTING TEST
+--------------------------------------------------
+ML Inference Failed, falling back to rule engine: fetch failed
+[Technology] (AI) - Score: 98% | Confidence: Medium
+ML Inference Failed, falling back to rule engine: fetch failed
+[Social Media] (AI) - Score: 98% | Confidence: High
+ML Inference Failed, falling back to rule engine: fetch failed
+[Food] (AI) - Score: 99% | Confidence: High
+ML Inference Failed, falling back to rule engine: fetch failed
+[Daily Life] (Human) - Score: 48% | Confidence: Medium
+ML Inference Failed, falling back to rule engine: fetch failed
+[Academic] (Human) - Score: 21% | Confidence: Medium
+ML Inference Failed, falling back to rule engine: fetch failed
+[Business] (Mixed) - Score: 84% | Confidence: High
+
+--------------------------------------------------
+2. MOCK BUG REGRESSION TEST
+--------------------------------------------------
+Test A: ML Offline Fallback
+Expected Score: 69%
+Actual Score: 69%
+✓ PASS: Offline gracefully falls back to Rule Engine.
+ML Inference Failed, falling back to rule engine: fetch failed
+
+Test B: Mock Leak Prevention
+Expected: fallbackMode: true (since python server is offline locally)
+✓ PASS: ml-detector-client correctly failed to fallbackMode without leaking mock values.
+
+--------------------------------------------------
+REPORT METRICS
+Total AI: 3 | False Negatives: 0
+Total Human: 2 | False Positives: 0
+
+SUCCESS: ZERO FALSE POSITIVES / FALSE NEGATIVES ON VALIDATION SUITE.

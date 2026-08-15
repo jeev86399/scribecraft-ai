@@ -194,6 +194,29 @@ export function Sidebar({ currentView, setCurrentView, onOpenDictionary, onOpenS
           AI Detector
         </button>
 
+        {/* AI Humanizer */}
+        <button
+          onClick={() => setCurrentView('humanizer')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: '0.65rem 0.85rem',
+            borderRadius: '8px',
+            border: 'none',
+            backgroundColor: currentView === 'humanizer' ? 'rgba(20,184,166,0.15)' : 'transparent',
+            color: currentView === 'humanizer' ? '#14b8a6' : '#94a3b8',
+            fontWeight: currentView === 'humanizer' ? 600 : 500,
+            fontSize: '0.88rem',
+            cursor: 'pointer',
+            textAlign: 'left',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <Wand2 size={17} />
+          AI Humanizer
+        </button>
+
         {/* Personal Dictionary */}
         <button
           onClick={onOpenDictionary}

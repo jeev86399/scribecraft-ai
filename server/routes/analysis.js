@@ -6,7 +6,9 @@ import {
   detectAI, 
   humanizeText,
   getAIDetectionHistory, 
-  deleteAIDetectionHistory 
+  deleteAIDetectionHistory,
+  getAIHumanizationHistory,
+  deleteAIHumanizationHistory
 } from '../controllers/analysisController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -28,5 +30,8 @@ router.post('/humanize', optionalAuth, humanizeText);
 
 router.get('/detect-ai/history', authenticateToken, getAIDetectionHistory);
 router.delete('/detect-ai/history/:id', authenticateToken, deleteAIDetectionHistory);
+
+router.get('/humanize/history', authenticateToken, getAIHumanizationHistory);
+router.delete('/humanize/history/:id', authenticateToken, deleteAIHumanizationHistory);
 
 export default router;

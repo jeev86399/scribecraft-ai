@@ -1,130 +1,96 @@
 /**
- * Phrase Predictability & Continuation Structure Analyzer (Signals 5 & 8)
- * Evaluates overused LLM clichés, transition placement, templated contrast, and expository continuation patterns.
+ * Predictability & Cliché Analyzer (Family E)
+ * Detects structural templates that are highly predictable in generative AI text.
+ * Built for Adversarial Paraphrase Robustness: Looks for abstract rhetorical constructs
+ * rather than just exact phrases (e.g. "offers a chance to", "provides an opportunity to").
  */
 
-const FORMULAIC_AI_PHRASES = [
-  'in today\'s rapidly evolving',
-  'in today\'s digital landscape',
-  'plays a crucial role',
-  'play a crucial role',
-  'it is important to note',
-  'it is important to consider',
-  'it should be noted that',
-  'by leveraging the power',
-  'serves as a testament to',
-  'rich tapestry of',
-  'fosters a culture of',
-  'delve into the',
-  'in summary, it is clear',
-  'unlock the full potential',
-  'seamlessly integrate',
-  'paradigm shift',
-  'beacon of hope',
-  'the rapid advancement of',
-  'in an increasingly interconnected',
-  'stems from the fact that',
-  'a double-edged sword',
-  'game-changer in the field'
-];
-
-const CONNECTIVE_TRANSITIONS = [
-  'however', 'moreover', 'furthermore', 'additionally', 'consequently',
-  'therefore', 'in conclusion', 'nonetheless', 'accordingly', 'overall',
-  'firstly', 'secondly', 'thirdly', 'finally', 'on the other hand', 'in contrast'
-];
-
-const TEMPLATED_CONTRASTS = [
-  'on the one hand',
-  'on the other hand',
-  'while it is true',
-  'at the same time',
-  'despite these challenges',
-  'nevertheless'
-];
-
 export function analyzePredictability(preprocessed) {
-  const { normalizedText, sentences, wordCount } = preprocessed;
+  const { normalizedText, wordCount } = preprocessed;
   if (!normalizedText || wordCount < 15) {
     return {
-      formulaicPhraseCount: 0,
-      transitionDensity: 0,
-      detectedPhrases: [],
+      clicheScore: 0,
+      structuralTemplateCount: 0,
       signalScore: 10,
       rating: 'Natural Phrasing',
-      explanation: 'Insufficient text to analyze phrase predictability.'
+      explanation: 'Insufficient text to analyze predictability.'
     };
   }
 
   const lowerText = normalizedText.toLowerCase();
+  
+  // Abstract Syntactic Templates (Robust against synonym replacement)
+  const STRUCTURAL_TEMPLATES = [
+    // The "Action + Vital/Crucial/Important + Noun" pattern
+    /\b(serves as|acts as|functions as|plays a|is a) (vital|crucial|essential|key|important|significant|pivotal) (role|tool|meal|aspect|component|part|factor)\b/g,
+    
+    // The "Action + Opportunity/Chance/Ability + To" pattern
+    /\b(providing|offering|creating|giving|presenting) (an opportunity|a chance|the ability|a way) to\b/g,
+    
+    // The "Not only X but also Y"
+    /\bnot only (.*?) but also\b/g,
+    
+    // The "Making it Adjective to"
+    /\b(making it|thus it is) (essential|crucial|important|vital|necessary|critical) to\b/g,
+    
+    // The "Diverse/Variety" pattern
+    /\b(a variety of|a diverse range of|a wide array of|a multitude of|a diverse set of)\b/g,
+    
+    // The "Catering to" pattern
+    /\b(catering to|meeting|addressing) (diverse|various|different) (needs|tastes|preferences|requirements)\b/g,
+    
+    // The "Profoundly influence" pattern
+    /\b(significantly impact|profoundly influence|greatly affect|positively influence)\b/g,
+    
+    // Abstract connective transitions
+    /\b(furthermore|moreover|additionally), \b/g,
+    /\b(ultimately|in conclusion|in summary|to summarize), \b/g,
+    
+    // The "Promote/Support General" pattern
+    /\b(promote|encourage|support|foster) (overall|general) (well-being|health|success|growth)\b/g,
 
-  // 1. Scan for Formulaic AI Phrases
-  const detectedPhrases = [];
-  let formulaicCount = 0;
+    // The "Whether it's X, Y, or Z" AI generative list pattern
+    /\bwhether it(')?s a (.*?), a (.*?), or a (.*?)\b/g,
 
-  for (const phrase of FORMULAIC_AI_PHRASES) {
-    const regex = new RegExp(`\\b${phrase.replace(/'/g, "\\'")}\\b`, 'gi');
+    // The generative marketing/engagement patterns
+    /\b(resonate|connect) with your audience\b/g,
+    /\b(foster|build|create|cultivate) a (sense of community|genuine connection|lasting relationship)\b/g,
+    /\b(remember, |ultimately, |crucially, |importantly, )(.*?) is key\b/g,
+    /\ba blend of (.*?) and (.*?)\b/g
+  ];
+
+  let templateMatchCount = 0;
+  for (const regex of STRUCTURAL_TEMPLATES) {
     const matches = lowerText.match(regex);
     if (matches) {
-      formulaicCount += matches.length;
-      if (!detectedPhrases.includes(phrase)) {
-        detectedPhrases.push(phrase);
-      }
+      templateMatchCount += matches.length;
     }
   }
 
-  // 2. Templated Contrast Analysis
-  let contrastCount = 0;
-  for (const contrast of TEMPLATED_CONTRASTS) {
-    if (lowerText.includes(contrast)) {
-      contrastCount++;
-      if (!detectedPhrases.includes(contrast)) {
-        detectedPhrases.push(contrast);
-      }
-    }
-  }
+  const density = wordCount > 0 ? (templateMatchCount / (wordCount / 100)) : 0;
 
-  // 3. Sentence-Opener Transition Density Analysis
-  let sentenceOpenerTransitions = 0;
-  for (const s of sentences) {
-    const firstWord = s.trim().split(/\s+/)[0]?.toLowerCase().replace(/[^a-z]/g, '');
-    if (CONNECTIVE_TRANSITIONS.includes(firstWord)) {
-      sentenceOpenerTransitions++;
-    }
-  }
-
-  const transitionDensityPer100 = wordCount > 0 ? ((sentenceOpenerTransitions + contrastCount) / (wordCount / 100)) : 0;
-
-  // 4. Score Aggregation
   let signalScore = 10;
-
-  if (formulaicCount >= 3 || (sentenceOpenerTransitions >= 2 && formulaicCount >= 2) || (formulaicCount >= 2 && contrastCount >= 1)) {
-    signalScore = 90;
-  } else if (formulaicCount >= 2 || (sentenceOpenerTransitions >= 2 && formulaicCount >= 1)) {
+  if (density >= 2.0) {
+    signalScore = 95;
+  } else if (density >= 1.0) {
     signalScore = 75;
-  } else if (formulaicCount === 1 || sentenceOpenerTransitions >= 2 || contrastCount >= 1) {
-    signalScore = 55;
-  } else if (sentenceOpenerTransitions === 1) {
-    signalScore = 30;
+  } else if (density >= 0.5) {
+    signalScore = 45;
   }
 
   let rating = 'Natural Phrasing';
-  if (signalScore >= 75) rating = 'High Predictable Phrasing';
-  else if (signalScore >= 50) rating = 'Moderate Predictability';
+  if (signalScore >= 75) rating = 'Highly Predictable Structural Templates';
+  else if (signalScore >= 45) rating = 'Moderate Structural Predictability';
 
-  let explanation = 'Transitions and phrasing appear organic without overused clichés.';
-  if (formulaicCount > 0) {
-    explanation = `Contains ${formulaicCount} formulaic expressions (${detectedPhrases.slice(0, 3).map(p => `"${p}"`).join(', ')}) typical of AI output.`;
-  } else if (sentenceOpenerTransitions >= 2) {
-    explanation = `Features ${sentenceOpenerTransitions} sentence-initial transition markers (${transitionDensityPer100.toFixed(1)} per 100 words).`;
+  let explanation = 'Text uses natural, unpredictable phrasing.';
+  if (signalScore >= 75) {
+    explanation = `High density of generative structural templates detected (${density.toFixed(1)} templates/100w). Text is highly predictable even if paraphrased.`;
   }
 
   return {
-    formulaicPhraseCount: formulaicCount,
-    contrastCount,
-    transitionDensity: Math.round(transitionDensityPer100 * 10) / 10,
-    sentenceOpenerTransitions,
-    detectedPhrases,
+    clicheScore: signalScore,
+    structuralTemplateCount: templateMatchCount,
+    density: Math.round(density * 10) / 10,
     signalScore,
     rating,
     explanation

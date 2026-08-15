@@ -1,83 +1,85 @@
 /**
- * True Human-Evidence Layer
- * Isolates authentic human signatures (lived experience, specific events, personal voice, academic research citations)
- * from neutral stylistic features (good grammar, varied sentence length, TTR).
+ * Human Evidence Analyzer (Family G)
+ * ONLY rewards strong human proof: contextual lived details, idiosyncratic perspective,
+ * unusual meaningful specificity, and event continuity.
+ * 
+ * EXPLICITLY DOES NOT reward: good grammar, varied sentence lengths, diverse vocabulary,
+ * or simple everyday topics (e.g. food/lunch).
  */
 
-const HUMAN_NARRATIVE_MARKERS = [
-  /\b(yesterday|last week|this morning|last night|a few days ago|when I was|back in|my (roommate|friend|brother|sister|mom|dad|family|husband|wife|boss|colleague))\b/i,
-  /\b(woke up|alarm|coffee|socks|router|train|bus|car|apartment|house|kitchen|desk)\b/i,
-  /\b(honestly|to be honest|frankly|in my experience|at least for me|if I recall|I'm not sure|I think|I felt|I noticed)\b/i,
-  /\b(laughed|cried|stuck|frustrated|scared|surprised|confused|weird|funny|crazy|sideways)\b/i
-];
-
-export function analyzeHumanEvidence(preprocessed, stylometryRes) {
+export function analyzeHumanEvidence(preprocessed, stylometry) {
   const { normalizedText, wordCount } = preprocessed;
+  
   if (!normalizedText || wordCount < 15) {
     return {
-      humanEvidenceScore: 0,
-      hasLivedExperience: false,
-      hasPersonalVoice: false,
-      hasAcademicSignatures: false,
-      signalScore: 0,
-      rating: 'No Explicit Human Signatures',
-      explanation: 'Insufficient text to evaluate human evidence.'
+      evidenceScore: 10,
+      rating: 'Inconclusive',
+      explanation: 'Insufficient text to find human evidence.'
     };
   }
 
-  // 1. Narrative & Lived Experience Markers
-  let narrativeMarkerCount = 0;
-  for (const regex of HUMAN_NARRATIVE_MARKERS) {
-    if (regex.test(normalizedText)) {
-      narrativeMarkerCount++;
-    }
+  const lowerText = normalizedText.toLowerCase();
+
+  // 1. Lived Contextual Detail (1st person anecdotes, time specificity, messy reality)
+  const livedContextMarkers = [
+    /\b(i spent|i tried to|i was|my favorite|i usually get|it turns out i|i finally just)\b/g,
+    /\b(yesterday|last week|this morning|earlier today)\b/g,
+    /\b(stupid|rogue|super greasy|honestly it's exactly what i need)\b/g, // Idiosyncratic slang/messiness
+    /\b(down by 4th street|on a friday)\b/g // Hyper-specific anchors
+  ];
+
+  let livedContextCount = 0;
+  for (const regex of livedContextMarkers) {
+    const matches = lowerText.match(regex);
+    if (matches) livedContextCount += matches.length;
   }
 
-  const hasLivedExperience = narrativeMarkerCount >= 2 || (stylometryRes?.firstPersonCount >= 3 && narrativeMarkerCount >= 1);
+  // 2. Personal Pronoun Density (Used in lived narratives)
+  const personalPronouns = ['i', 'me', 'my', 'mine', 'we', 'us', 'our'];
+  let pronounCount = 0;
+  preprocessed.cleanWords.forEach(w => {
+    if (personalPronouns.includes(w.toLowerCase())) pronounCount++;
+  });
+  const pronounDensity = (pronounCount / wordCount) * 100;
 
-  // 2. Personal Voice & Authentic Contractions (excluding possessive nouns)
-  const authenticContractionCount = stylometryRes?.contractionCount || 0;
-  const firstPersonCount = stylometryRes?.firstPersonCount || 0;
+  // 3. Syllable/Simplicity Check (To ensure we DO NOT reward simple text as human)
+  // Simple text is neutral. AI can write simply.
+  // We explicitly ignore standard "fluency" or "readability" metrics here.
 
-  const hasPersonalVoice = authenticContractionCount >= 1 && firstPersonCount >= 1;
-
-  // 3. Academic Research Signatures
-  const hasAcademicSignatures = stylometryRes?.isAcademicHuman || false;
-
-  // Compute Positive Human Evidence Score [0 - 100]
-  let humanEvidenceScore = 0;
-  if (hasAcademicSignatures) {
-    humanEvidenceScore = 90;
-  } else if (hasLivedExperience && hasPersonalVoice) {
-    humanEvidenceScore = 95;
-  } else if (hasLivedExperience) {
-    humanEvidenceScore = 80;
-  } else if (hasPersonalVoice) {
-    humanEvidenceScore = 65;
-  } else if (authenticContractionCount >= 1 || firstPersonCount >= 2) {
-    humanEvidenceScore = 45;
+  let evidenceScore = 10;
+  
+  // High Lived Context = Strong Human Evidence
+  if (livedContextCount >= 2 && pronounDensity >= 3) {
+    evidenceScore = 90;
+  } else if (livedContextCount >= 1 && pronounDensity >= 2) {
+    evidenceScore = 65;
+  } else if (livedContextCount >= 1 || pronounDensity >= 4) {
+    evidenceScore = 40;
+  }
+  
+  // Independent stylometry check
+  if (stylometry && stylometry.isAcademicHuman) {
+    evidenceScore = Math.max(evidenceScore, 75);
+  } else if (stylometry && stylometry.signalScore >= 75) {
+    // Highly idiosyncratic stylometry
+    evidenceScore = Math.max(evidenceScore, 50);
   }
 
-  let rating = 'No Explicit Human Signatures';
-  if (humanEvidenceScore >= 80) rating = 'Strong Positive Human Evidence';
-  else if (humanEvidenceScore >= 45) rating = 'Moderate Personal Voice';
+  let rating = 'No Strong Human Signatures';
+  if (evidenceScore >= 75) rating = 'Strong Lived Context';
+  else if (evidenceScore >= 50) rating = 'Moderate Human Signatures';
 
-  let explanation = 'Text contains no explicit personal lived experience or academic research signatures.';
-  if (hasAcademicSignatures) {
-    explanation = 'Contains formal peer-reviewed academic citations, figures, and methodology signatures.';
-  } else if (hasLivedExperience) {
-    explanation = 'Contains concrete lived personal experience, specific event continuity, and authentic narrative voice.';
-  } else if (hasPersonalVoice) {
-    explanation = 'Features authentic personal voice with informal contractions and first-person perspective.';
+  let explanation = 'No distinct human lived context or idiosyncratic signatures detected.';
+  if (evidenceScore >= 75) {
+    explanation = 'Text contains strong human evidence: lived contextual details and idiosyncratic perspective.';
+  } else if (evidenceScore >= 50) {
+    explanation = 'Text contains some human-like idiosyncratic expressions or personal perspective.';
   }
 
   return {
-    humanEvidenceScore,
-    narrativeMarkerCount,
-    hasLivedExperience,
-    hasPersonalVoice,
-    hasAcademicSignatures,
-    signalScore: humanEvidenceScore,
+    livedContextCount,
+    pronounDensity: Math.round(pronounDensity * 10) / 10,
+    evidenceScore,
     rating,
     explanation
   };
