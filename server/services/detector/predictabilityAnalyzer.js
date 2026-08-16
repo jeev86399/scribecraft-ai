@@ -58,7 +58,19 @@ export function analyzePredictability(preprocessed) {
     /\b(resonate|connect) with your audience\b/g,
     /\b(foster|build|create|cultivate) a (sense of community|genuine connection|lasting relationship)\b/g,
     /\b(remember, |ultimately, |crucially, |importantly, )(.*?) is key\b/g,
-    /\ba blend of (.*?) and (.*?)\b/g
+    /\ba blend of (.*?) and (.*?)\b/g,
+
+    // NEW V2.0 Generic AI Connectives and Framing
+    /\b(evokes a sense of|creates a sense of|brings a sense of)\b/g,
+    /\b(while some view it as|while some may|while it is true that)(.*?), others (see it as|argue|believe)\b/g,
+    /\b(regardless of the perspective|regardless of your|irrespective of)\b/g,
+    /\b(prompts us to reflect on|forces us to reflect on|makes us reconsider)\b/g,
+    /\b(has been explored in various|is often seen in various|can be found across)\b/g,
+    /\b(stirring both|causing both|bringing both) (.*?) and (.*?)\b/g,
+    /\b(represents a time when|symbolizes a moment when)\b/g,
+    /\b(each offering unique|each providing unique|all bringing unique)\b/g,
+    /\b(a moment of reckoning|a turning point|a pivotal moment)\b/g,
+    /\b(an opportunity for renewal|a chance for growth|an avenue for change)\b/g
   ];
 
   let templateMatchCount = 0;
@@ -72,12 +84,12 @@ export function analyzePredictability(preprocessed) {
   const density = wordCount > 0 ? (templateMatchCount / (wordCount / 100)) : 0;
 
   let signalScore = 10;
-  if (density >= 2.0) {
-    signalScore = 90;
-  } else if (density >= 1.0) {
-    signalScore = 70;
-  } else if (density >= 0.5) {
-    signalScore = 40;
+  if (density >= 1.5) {
+    signalScore = 92;
+  } else if (density >= 0.8) {
+    signalScore = 75;
+  } else if (density >= 0.4) {
+    signalScore = 55;
   }
 
   // V2 length calibration: Shorter text has higher variance, penalize strong claims

@@ -49,12 +49,11 @@ export function analyzeBurstiness(preprocessed) {
     paraStdDev = Math.sqrt(paraVar);
   }
 
-  // V2 Rule: Low burstiness can mean AI, but also academic/technical writing.
   // CV < 0.25 is extremely uniform. CV > 0.6 is highly bursty (human).
   let signalScore = 0;
-  if (cv < 0.20 && avgDelta < 3.0) signalScore = 65; // Capped max score because uniformity != AI
-  else if (cv < 0.35 && avgDelta < 4.5) signalScore = 50;
-  else if (cv < 0.50 && avgDelta < 6.5) signalScore = 30;
+  if (cv < 0.25 && avgDelta < 6.0) signalScore = 80;
+  else if (cv < 0.40 && avgDelta < 7.5) signalScore = 65;
+  else if (cv < 0.55 && avgDelta < 9.0) signalScore = 40;
   else signalScore = 10;
 
   // Short sample penalty

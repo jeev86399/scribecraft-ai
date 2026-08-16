@@ -128,9 +128,12 @@ export function computeEvidenceConvergence(families) {
 
   // 6. Classification Output
   let classification = 'uncertain';
-  if (confidence >= 50) {
+  // Allow classification if confidence is at least 35 (allows fallback mode A+B to classify)
+  if (confidence >= 35) {
       if (baseConvergence > 75) classification = 'likely_ai';
-      else if (baseConvergence < 35) classification = 'likely_human';
+      else if (baseConvergence > 60) classification = 'mixed_signals';
+      else if (baseConvergence < 40) classification = 'likely_human';
+      else classification = 'uncertain';
   } else {
       classification = 'insufficient_evidence';
   }
