@@ -91,20 +91,32 @@ export async function detectAI(req, res) {
     const result = await detectAITextService(text);
 
     // Save history for authenticated users if analysis was valid
-    if (userId && !result.isTooShort) {
+    if (userId && result.success) {
       const id = `det_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+      const resData = result.result;
+      
       await db.run(
-        `INSERT INTO ai_detections (id, user_id, word_count, ai_likelihood, human_likelihood, confidence, classification_label, summary_reasons)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO ai_detections (
+           id, user_id, word_count, ai_likelihood, human_likelihood, confidence, 
+           classification_label, summary_reasons, detector_version, reliability, 
+           evidence_coverage, active_families, unavailable_families, fallback_mode
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           userId,
-          result.wordCount,
-          result.aiLikelihood,
-          result.humanLikelihood,
-          result.confidence,
-          result.classificationLabel,
-          JSON.stringify(result.reasons || [])
+          result.evidence?.integrity?.preprocessed?.wordCount || 0,
+          resData.aiLikelihood,
+          100 - resData.aiLikelihood,
+          resData.confidence,
+          resData.classification,
+          JSON.stringify([resData.agreementLevel]), // Placeholder for reasons
+          result.version,
+          resData.reliability,
+          resData.evidenceCoverage,
+          JSON.stringify(resData.activeFamilies || []),
+          JSON.stringify(resData.unavailableFamilies || []),
+          resData.fallbackMode ? 1 : 0
         ]
       );
     }
@@ -156,13 +168,18 @@ export async function getAIDetectionHistory(req, res) {
   try {
     const userId = req.user.id;
     const history = await db.all(
-      'SELECT id, word_count, ai_likelihood, human_likelihood, confidence, classification_label, summary_reasons, created_at FROM ai_detections WHERE user_id = ? ORDER BY created_at DESC LIMIT 20',
+      `SELECT id, word_count, ai_likelihood, human_likelihood, confidence, classification_label, summary_reasons, created_at,
+              detector_version, reliability, evidence_coverage, active_families, unavailable_families, fallback_mode
+       FROM ai_detections WHERE user_id = ? ORDER BY created_at DESC LIMIT 20`,
       [userId]
     );
 
     const formatted = history.map(item => ({
       ...item,
-      summary_reasons: JSON.parse(item.summary_reasons || '[]')
+      summary_reasons: JSON.parse(item.summary_reasons || '[]'),
+      active_families: JSON.parse(item.active_families || '[]'),
+      unavailable_families: JSON.parse(item.unavailable_families || '[]'),
+      fallback_mode: item.fallback_mode === 1
     }));
 
     return res.json(formatted);

@@ -1,19 +1,21 @@
 /**
- * Predictability & Cliché Analyzer (Family E)
+ * Predictability & Cliché Analyzer (Family A)
  * Detects structural templates that are highly predictable in generative AI text.
  * Built for Adversarial Paraphrase Robustness: Looks for abstract rhetorical constructs
- * rather than just exact phrases (e.g. "offers a chance to", "provides an opportunity to").
+ * rather than just exact phrases. Calibrates scores based on text length.
  */
 
 export function analyzePredictability(preprocessed) {
   const { normalizedText, wordCount } = preprocessed;
-  if (!normalizedText || wordCount < 15) {
+  if (!normalizedText || wordCount < 30) {
     return {
+      available: false,
+      reason: 'insufficient_text',
       clicheScore: 0,
       structuralTemplateCount: 0,
-      signalScore: 10,
-      rating: 'Natural Phrasing',
-      explanation: 'Insufficient text to analyze predictability.'
+      signalScore: 0, // In V2, unavailable is ignored by convergence engine
+      rating: 'Uncertain',
+      explanation: 'Insufficient text to statistically analyze predictability.'
     };
   }
 
@@ -71,23 +73,29 @@ export function analyzePredictability(preprocessed) {
 
   let signalScore = 10;
   if (density >= 2.0) {
-    signalScore = 95;
+    signalScore = 90;
   } else if (density >= 1.0) {
-    signalScore = 75;
+    signalScore = 70;
   } else if (density >= 0.5) {
-    signalScore = 45;
+    signalScore = 40;
+  }
+
+  // V2 length calibration: Shorter text has higher variance, penalize strong claims
+  if (wordCount < 100 && signalScore > 50) {
+      signalScore -= 20; // Lower confidence in short samples
   }
 
   let rating = 'Natural Phrasing';
-  if (signalScore >= 75) rating = 'Highly Predictable Structural Templates';
-  else if (signalScore >= 45) rating = 'Moderate Structural Predictability';
+  if (signalScore >= 70) rating = 'Highly Predictable Structural Templates';
+  else if (signalScore >= 40) rating = 'Moderate Structural Predictability';
 
   let explanation = 'Text uses natural, unpredictable phrasing.';
-  if (signalScore >= 75) {
-    explanation = `High density of generative structural templates detected (${density.toFixed(1)} templates/100w). Text is highly predictable even if paraphrased.`;
+  if (signalScore >= 70) {
+    explanation = `High density of generative structural templates detected (${density.toFixed(1)} templates/100w). Text is highly predictable.`;
   }
 
   return {
+    available: true,
     clicheScore: signalScore,
     structuralTemplateCount: templateMatchCount,
     density: Math.round(density * 10) / 10,

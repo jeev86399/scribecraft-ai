@@ -1,18 +1,22 @@
 /**
- * Burstiness & Rhythm Analyzer (Signal 2)
- * Measures sentence-to-sentence length delta variation, paragraph rhythm, and syntactic burstiness.
+ * Structural Variance & Burstiness Analyzer (Family B)
+ * Measures sentence-to-sentence length variation, rhythm, and structural burstiness.
+ * V2 Rule: Uniformity does not necessarily mean AI (academic/technical writing is uniform).
  */
 
 export function analyzeBurstiness(preprocessed) {
   const { sentences, paragraphs } = preprocessed;
   if (!sentences || sentences.length < 2) {
     return {
+      available: false,
+      reason: 'insufficient_sentences',
       burstinessIndex: 0,
       adjacentDeltaMean: 0,
       paragraphVariance: 0,
-      signalScore: 30,
-      rating: 'Moderate',
-      explanation: 'Insufficient text to calculate burstiness index.'
+      cv: 0,
+      signalScore: 0,
+      rating: 'Uncertain',
+      explanation: 'Insufficient text to calculate structural burstiness.'
     };
   }
 
@@ -30,6 +34,10 @@ export function analyzeBurstiness(preprocessed) {
   // Normalized Burstiness Index (B = (stdDev - mean) / (stdDev + mean))
   const variance = lengths.reduce((acc, l) => acc + Math.pow(l - meanLen, 2), 0) / lengths.length;
   const stdDev = Math.sqrt(variance);
+  
+  // Coefficient of Variation (CV = stdDev / meanLen)
+  const cv = meanLen > 0 ? (stdDev / meanLen) : 0;
+  
   const rawBurstiness = (stdDev + meanLen) > 0 ? (stdDev - meanLen) / (stdDev + meanLen) : 0;
 
   // 2. Paragraph length variation
@@ -41,25 +49,32 @@ export function analyzeBurstiness(preprocessed) {
     paraStdDev = Math.sqrt(paraVar);
   }
 
-  // Low burstiness (monotonous length changes between adjacent sentences) is an AI pattern signal
+  // V2 Rule: Low burstiness can mean AI, but also academic/technical writing.
+  // CV < 0.25 is extremely uniform. CV > 0.6 is highly bursty (human).
   let signalScore = 0;
-  if (avgDelta < 2.5) signalScore = 80;
-  else if (avgDelta < 4.0) signalScore = 65;
-  else if (avgDelta < 6.5) signalScore = 40;
-  else if (avgDelta < 9.0) signalScore = 20;
+  if (cv < 0.20 && avgDelta < 3.0) signalScore = 65; // Capped max score because uniformity != AI
+  else if (cv < 0.35 && avgDelta < 4.5) signalScore = 50;
+  else if (cv < 0.50 && avgDelta < 6.5) signalScore = 30;
   else signalScore = 10;
 
-  let rating = 'High Natural Variation';
-  if (signalScore >= 70) rating = 'High Uniformity';
-  else if (signalScore >= 45) rating = 'Moderate Variation';
+  // Short sample penalty
+  if (sentences.length < 5 && signalScore > 30) {
+    signalScore -= 20;
+  }
 
-  let explanation = `Adjacent sentence deltas average ${avgDelta.toFixed(1)} words, indicating natural human rhythm.`;
-  if (signalScore >= 70) {
-    explanation = `Adjacent sentences show low delta variation (avg delta = ${avgDelta.toFixed(1)} words), characteristic of uniform AI generation.`;
+  let rating = 'High Natural Variation';
+  if (signalScore >= 60) rating = 'High Uniformity (Potential Generative Pattern)';
+  else if (signalScore >= 40) rating = 'Moderate Structural Uniformity';
+
+  let explanation = `Structural variation is natural (CV = ${cv.toFixed(2)}, avg delta = ${avgDelta.toFixed(1)} words).`;
+  if (signalScore >= 60) {
+    explanation = `High structural uniformity detected (CV = ${cv.toFixed(2)}). May indicate generative AI or highly constrained technical/academic writing.`;
   }
 
   return {
+    available: true,
     burstinessIndex: Math.round(rawBurstiness * 100) / 100,
+    cv: Math.round(cv * 100) / 100,
     adjacentDeltaMean: Math.round(avgDelta * 10) / 10,
     paragraphStdDev: Math.round(paraStdDev * 10) / 10,
     signalScore,

@@ -104,21 +104,22 @@ export function AIDetector() {
 
   const handleCopyReport = () => {
     if (!result) return;
+    const resData = result.result || {};
     const reportText = `ScribeCraft AI v2.0 Content Detection Estimate:
-Likelihood: ${result.aiLikelihood}% (${result.classificationLabel})
-Human Pattern Signal: ${result.humanLikelihood}%
-AI Pattern Signal: ${result.aiLikelihood}%
-Uncertainty: ${result.uncertainty || 'Low'}
-Confidence: ${result.confidence}
-Words Analyzed: ${result.wordCount}
+Likelihood: ${resData.aiLikelihood}% (${resData.classification})
+Human Pattern Signal: ${100 - resData.aiLikelihood}%
+AI Pattern Signal: ${resData.aiLikelihood}%
+Reliability: ${resData.reliability}
+Confidence: ${resData.confidence}
+Evidence Coverage: ${resData.evidenceCoverage}%
 
-Signal Summary:
-${(result.keySignals || []).map(s => `• ${s.name}: ${s.result} (${s.level})`).join('\n')}
+Active Families:
+${(resData.activeFamilies || []).map(f => `• ${f}`).join('\n')}
 
-Evidence:
-${(result.reasons || []).map(r => `• ${r}`).join('\n')}
+Unavailable Families (Fallback Mode):
+${(resData.unavailableFamilies || []).map(f => `• ${f}`).join('\n')}
 
-Disclaimer: ${result.disclaimer}`;
+Disclaimer: ${(result.limitations || []).join(' ')}`;
 
     navigator.clipboard.writeText(reportText);
     setCopied(true);
@@ -364,14 +365,14 @@ Disclaimer: ${result.disclaimer}`;
         {/* Right Side: Calibrated Multi-Signal Results Panel */}
         {result && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            {result.isTooShort ? (
+            {!result.success ? (
               <div style={{ padding: '1.5rem', borderRadius: '16px', backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid #f59e0b', color: 'var(--text-main)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f59e0b', fontWeight: 700, marginBottom: '0.5rem' }}>
                   <AlertTriangle size={18} />
-                  <span>Not Enough Text</span>
+                  <span>Insufficient Text or Invalid Request</span>
                 </div>
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  {result.message}
+                  {result.limitations?.[0] || 'Unable to evaluate.'}
                 </p>
               </div>
             ) : (
@@ -390,32 +391,16 @@ Disclaimer: ${result.disclaimer}`;
                     </span>
 
                     <div style={{ display: 'flex', gap: '0.35rem' }}>
-                      {result.isMlActive && (
-                        <span style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          padding: '0.2rem 0.55rem',
-                          borderRadius: '9999px',
-                          backgroundColor: 'rgba(59,130,246,0.12)',
-                          color: '#3b82f6',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.25rem'
-                        }}>
-                          <Cpu size={12} /> ML Ensemble
-                        </span>
-                      )}
-                      
-                      {!result.isMlActive && (
+                      {result.result.fallbackMode && (
                          <span style={{
                           fontSize: '0.72rem',
                           fontWeight: 700,
                           padding: '0.2rem 0.55rem',
                           borderRadius: '9999px',
-                          backgroundColor: 'rgba(107,114,128,0.12)',
-                          color: '#6b7280'
+                          backgroundColor: 'rgba(245,158,11,0.12)',
+                          color: '#f59e0b'
                         }}>
-                          Rule Engine Only
+                          Graceful Fallback Mode Active
                         </span>
                       )}
 
@@ -427,7 +412,7 @@ Disclaimer: ${result.disclaimer}`;
                         backgroundColor: 'rgba(99,102,241,0.12)',
                         color: '#6366f1'
                       }}>
-                        Confidence: {result.confidence}
+                        Confidence: {result.result.confidence}%
                       </span>
 
                       <span style={{
@@ -435,20 +420,21 @@ Disclaimer: ${result.disclaimer}`;
                         fontWeight: 700,
                         padding: '0.2rem 0.55rem',
                         borderRadius: '9999px',
-                        backgroundColor: 'rgba(245,158,11,0.12)',
-                        color: '#f59e0b'
+                        backgroundColor: result.result.reliability === 'high' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
+                        color: result.result.reliability === 'high' ? '#10b981' : '#f59e0b',
+                        textTransform: 'capitalize'
                       }}>
-                        Uncertainty: {result.uncertainty || 'Low'}
+                        Reliability: {result.result.reliability}
                       </span>
                     </div>
                   </div>
 
                   <div style={{ marginBottom: '1.25rem' }}>
-                    <h3 style={{ fontSize: '1.75rem', fontWeight: 800, color: result.aiLikelihood > 50 ? 'var(--color-spelling)' : '#10b981', marginBottom: '0.25rem' }}>
-                      {result.aiLikelihood}% {result.classificationLabel}
+                    <h3 style={{ fontSize: '1.75rem', fontWeight: 800, color: result.result.aiLikelihood > 50 ? 'var(--color-spelling)' : '#10b981', marginBottom: '0.25rem' }}>
+                      {result.result.aiLikelihood}% {result.result.classification}
                     </h3>
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      Text analyzed: {result.wordCount} words
+                      Text analyzed: {result.evidence?.integrity?.preprocessed?.wordCount || 0} words
                     </p>
                   </div>
 
@@ -458,10 +444,10 @@ Disclaimer: ${result.disclaimer}`;
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.25rem' }}>
                         <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>Human-Pattern Signal</span>
-                        <span style={{ fontWeight: 700, color: '#10b981' }}>{result.humanLikelihood}%</span>
+                        <span style={{ fontWeight: 700, color: '#10b981' }}>{100 - result.result.aiLikelihood}%</span>
                       </div>
                       <div style={{ height: '6px', borderRadius: '3px', backgroundColor: 'var(--border-color)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${result.humanLikelihood}%`, backgroundColor: '#10b981', transition: 'width 0.5s ease' }} />
+                        <div style={{ height: '100%', width: `${100 - result.result.aiLikelihood}%`, backgroundColor: '#10b981', transition: 'width 0.5s ease' }} />
                       </div>
                     </div>
 
@@ -469,10 +455,10 @@ Disclaimer: ${result.disclaimer}`;
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.25rem' }}>
                         <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>AI-Pattern Signal</span>
-                        <span style={{ fontWeight: 700, color: result.aiLikelihood > 50 ? 'var(--color-spelling)' : '#f59e0b' }}>{result.aiLikelihood}%</span>
+                        <span style={{ fontWeight: 700, color: result.result.aiLikelihood > 50 ? 'var(--color-spelling)' : '#f59e0b' }}>{result.result.aiLikelihood}%</span>
                       </div>
                       <div style={{ height: '6px', borderRadius: '3px', backgroundColor: 'var(--border-color)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${result.aiLikelihood}%`, backgroundColor: result.aiLikelihood > 50 ? 'var(--color-spelling)' : '#f59e0b', transition: 'width 0.5s ease' }} />
+                        <div style={{ height: '100%', width: `${result.result.aiLikelihood}%`, backgroundColor: result.result.aiLikelihood > 50 ? 'var(--color-spelling)' : '#f59e0b', transition: 'width 0.5s ease' }} />
                       </div>
                     </div>
                   </div>
@@ -503,37 +489,48 @@ Disclaimer: ${result.disclaimer}`;
                   </div>
                 </div>
 
-                {/* Neutral Signal Breakdown Table */}
                 <div style={{ padding: '1.25rem', borderRadius: '16px', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
                   <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.85rem' }}>
-                    Signal Breakdown
+                    Active Evidence Families
                   </h4>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-                    {(result.keySignals || []).map((sig, idx) => (
-                      <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', paddingBottom: '0.4rem', borderBottom: idx < result.keySignals.length - 1 ? '1px solid var(--border-color)' : 'none' }}>
-                        <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{sig.name}</span>
-                        <span style={{ fontWeight: 600, color: sig.level.includes('Formulaic') || sig.level.includes('Generic') || sig.level.includes('Template') || sig.level.includes('Anonymous') || sig.level === 'AI-Pattern' ? 'var(--color-spelling)' : '#10b981' }}>
-                          {sig.result}
-                        </span>
-                      </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.55rem' }}>
+                    {(result.result.activeFamilies || []).map((fam, idx) => (
+                      <span key={idx} style={{ padding: '0.25rem 0.65rem', borderRadius: '6px', backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-color)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        {fam}
+                      </span>
                     ))}
                   </div>
+                  
+                  {result.result.unavailableFamilies?.length > 0 && (
+                      <div style={{ marginTop: '1rem', paddingTop: '0.85rem', borderTop: '1px solid var(--border-color)' }}>
+                         <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: '#f59e0b', marginBottom: '0.5rem' }}>
+                            Unavailable (Fallback Triggered)
+                         </h4>
+                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.55rem' }}>
+                            {(result.result.unavailableFamilies || []).map((fam, idx) => (
+                              <span key={idx} style={{ padding: '0.25rem 0.65rem', borderRadius: '6px', backgroundColor: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)', fontSize: '0.8rem', color: '#f59e0b' }}>
+                                {fam}
+                              </span>
+                            ))}
+                          </div>
+                      </div>
+                  )}
                 </div>
 
-                {/* Dynamic "Why this result?" Evidence Section */}
                 <div style={{ padding: '1.25rem', borderRadius: '16px', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
                   <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.75rem' }}>
-                    Why this result?
+                    Summary Insights
                   </h4>
-
                   <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.55rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                    {(result.reasons || []).map((reason, idx) => (
-                      <li key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem' }}>
+                      <li style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem' }}>
                         <span style={{ color: 'var(--primary)', fontWeight: 700 }}>•</span>
-                        <span style={{ lineHeight: 1.45 }}>{reason}</span>
+                        <span style={{ lineHeight: 1.45 }}>Overall Agreement: {result.result.agreementLevel}</span>
                       </li>
-                    ))}
+                      <li style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem' }}>
+                        <span style={{ color: 'var(--primary)', fontWeight: 700 }}>•</span>
+                        <span style={{ lineHeight: 1.45 }}>Evidence Coverage: {result.result.evidenceCoverage}%</span>
+                      </li>
                   </ul>
                 </div>
                 
@@ -548,9 +545,13 @@ Disclaimer: ${result.disclaimer}`;
                 {/* Disclaimer Alert */}
                 <div style={{ padding: '1rem', borderRadius: '12px', backgroundColor: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)', display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
                   <Info size={18} color="#6366f1" style={{ flexShrink: 0, marginTop: '2px' }} />
-                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
-                    {result.disclaimer}
-                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {(result.limitations || []).map((lim, idx) => (
+                       <p key={idx} style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                         {lim}
+                       </p>
+                    ))}
+                  </div>
                 </div>
               </>
             )}

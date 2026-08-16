@@ -1,99 +1,91 @@
-import { preprocessText } from './textPreprocessor.js';
-import { analyzeSentenceLengths } from './sentenceAnalyzer.js';
-import { analyzeBurstiness } from './burstinessAnalyzer.js';
-import { analyzeLexicalDiversity } from './lexicalAnalyzer.js';
-import { analyzeRepetition } from './repetitionAnalyzer.js';
+import { evaluateTextIntegrity } from './textIntegrityService.js';
 import { analyzePredictability } from './predictabilityAnalyzer.js';
-import { analyzeStructure } from './structureAnalyzer.js';
-import { analyzeStylometry } from './stylometryAnalyzer.js';
-import { analyzeSemanticGenericness } from './semanticGenericnessAnalyzer.js';
-import { analyzeSemanticInterchangeability } from './semanticInterchangeabilityAnalyzer.js';
-import { analyzeEncyclopedicVoice } from './encyclopedicVoiceAnalyzer.js';
-import { analyzeTopicInvariantPattern } from './topicInvariantPatternAnalyzer.js';
-import { analyzeContentGenerationStyle } from './contentGenerationStyleAnalyzer.js';
-import { analyzeDiscoursePatterns } from './discoursePatternAnalyzer.js';
-import { analyzeCoherence } from './coherenceAnalyzer.js';
-import { analyzeHumanEvidence } from './humanEvidenceAnalyzer.js';
-import { analyzeAuthorFingerprint } from './authorFingerprintAnalyzer.js';
+import { analyzeBurstiness } from './burstinessAnalyzer.js';
+import { analyzeTokenDistribution } from './tokenDistributionAnalyzer.js';
+import { analyzeRobustness } from './robustnessAnalyzer.js';
 import { getAISemanticAssessment } from './aiAssessmentService.js';
-import { calibrateEnsemble } from './calibrationService.js';
-import { validateDetectorConsistency } from './consistencyValidator.js';
+import { computeEvidenceConvergence } from './evidenceConvergenceEngine.js';
 import { detectAIWithML } from '../ml-detector-client.js';
 
-function extractSignals(text) {
-  const preprocessed = preprocessText(text);
-
-  if (preprocessed.wordCount < 15) {
-    return { isTooShort: true, wordCount: preprocessed.wordCount };
-  }
-
-  const genericnessRes = analyzeSemanticGenericness(preprocessed);
-  const interchangeabilityRes = analyzeSemanticInterchangeability(preprocessed);
-  const contentStyleRes = analyzeContentGenerationStyle(preprocessed);
-  const topicPatternRes = analyzeTopicInvariantPattern(preprocessed);
-  const predictabilityRes = analyzePredictability(preprocessed);
-  const encyclopedicVoiceRes = analyzeEncyclopedicVoice(preprocessed);
-  const stylometryRes = analyzeStylometry(preprocessed);
-  const humanEvidenceRes = analyzeHumanEvidence(preprocessed, stylometryRes);
-  const authorFingerprintRes = analyzeAuthorFingerprint(preprocessed, genericnessRes, humanEvidenceRes);
-  
-  return {
-    isTooShort: false,
-    preprocessed,
-    signals: {
-      sentence: analyzeSentenceLengths(preprocessed),
-      burstiness: analyzeBurstiness(preprocessed),
-      lexical: analyzeLexicalDiversity(preprocessed),
-      repetition: analyzeRepetition(preprocessed),
-      structure: analyzeStructure(preprocessed),
-      discourse: analyzeDiscoursePatterns(preprocessed),
-      coherence: analyzeCoherence(preprocessed),
-      genericness: genericnessRes,
-      interchangeability: interchangeabilityRes,
-      contentStyle: contentStyleRes,
-      topicPattern: topicPatternRes,
-      predictability: predictabilityRes,
-      encyclopedicVoice: encyclopedicVoiceRes,
-      stylometry: stylometryRes,
-      humanEvidence: humanEvidenceRes,
-      authorFingerprint: authorFingerprintRes
-    }
-  };
-}
-
 export async function detectAITextEnsemble(rawText, options = {}) {
-  // 1. Multi-Level Processing (Document vs Paragraph)
-  const documentLevel = extractSignals(rawText);
-  if (documentLevel.isTooShort) {
+  // 1. Family G: Text Integrity & Preprocessing
+  const integrity = evaluateTextIntegrity(rawText);
+  
+  if (!integrity.available) {
     return {
-      isTooShort: true,
-      wordCount: documentLevel.wordCount,
-      message: 'Not enough text for a reliable estimate. Please provide at least 15-30 words.'
+      success: false,
+      version: '2.0',
+      result: {
+        aiLikelihood: 0,
+        confidence: 0,
+        reliability: 'low',
+        evidenceCoverage: 0,
+        classification: 'insufficient_evidence',
+        agreementLevel: 'none',
+        fallbackMode: false
+      },
+      evidence: {},
+      limitations: ['Invalid input text provided.']
     };
   }
 
-  // 2. Fetch ML Backend Results (V5 Hybrid Addition)
-  const mlResults = await detectAIWithML(rawText);
+  const preprocessed = integrity.preprocessed;
 
-  // 3. Execute Optional Backend Gemini Semantic Assessment (Legacy Family E)
-  const semanticRes = await getAISemanticAssessment(rawText);
+  // 2. Local Analyzers (Families A, B, C, F)
+  const predictability = analyzePredictability(preprocessed);
+  const burstiness = analyzeBurstiness(preprocessed);
+  const tokenDist = analyzeTokenDistribution(preprocessed);
+  
+  // Family F is offline/eval only, but we instantiate it for completeness
+  const robustness = analyzeRobustness(preprocessed);
 
-  // 4. Calibrate Hybrid Multi-Family Evidence Convergence Ensemble Output
-  const sensitivityMode = options.sensitivityMode || 'Balanced';
-  const calibrated = calibrateEnsemble(
-    documentLevel.signals, 
-    documentLevel.preprocessed.wordCount, 
-    semanticRes, 
-    mlResults,
-    options.enableDiagnosticTrace || true,
-    sensitivityMode
-  );
+  // 3. Remote Services (Families D, E)
+  // Run these concurrently for performance
+  const [mlResults, semanticAssessment] = await Promise.all([
+    detectAIWithML(preprocessed.normalizedText),
+    getAISemanticAssessment(preprocessed.normalizedText)
+  ]);
 
-  // 5. Validate Detector Output Consistency
-  const validated = validateDetectorConsistency(calibrated, documentLevel.signals);
+  // 4. Evidence Convergence
+  const families = {
+    familyA_Predictability: predictability,
+    familyB_Burstiness: burstiness,
+    familyC_TokenDist: tokenDist,
+    familyD_ML: mlResults,
+    familyE_Semantic: semanticAssessment,
+    familyF_Robustness: robustness,
+    familyG_Integrity: integrity
+  };
 
+  const convergence = computeEvidenceConvergence(families);
+
+  // 5. Standardized V2.0 Response
   return {
-    ...validated,
-    metrics: documentLevel.signals
+    success: true,
+    version: '2.0',
+    result: {
+      aiLikelihood: convergence.aiLikelihood,
+      confidence: convergence.confidence,
+      reliability: convergence.reliability,
+      evidenceCoverage: convergence.evidenceCoverage,
+      classification: convergence.classification,
+      agreementLevel: convergence.agreementLevel,
+      activeFamilies: convergence.activeFamilies,
+      unavailableFamilies: convergence.unavailableFamilies,
+      fallbackMode: convergence.unavailableFamilies.includes('Family D (ML Classification)')
+    },
+    evidence: {
+      predictability,
+      burstiness,
+      tokenDist,
+      mlResults,
+      semanticAssessment,
+      integrity
+    },
+    limitations: [
+      'AI detection is probabilistic and should not be used as the sole basis for high-stakes decisions.',
+      ...tokenDist.limitations || [],
+      ...robustness.limitations || []
+    ]
   };
 }

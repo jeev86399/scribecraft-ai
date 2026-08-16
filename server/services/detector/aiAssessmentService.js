@@ -8,7 +8,7 @@ import { callGeminiApi, isGeminiConfigured } from '../aiConfig.js';
 
 export async function getAISemanticAssessment(text) {
   if (!isGeminiConfigured() || !text || text.trim().length < 40) {
-    return null; // Graceful fallback to statistical local ensemble
+    return { available: false, reason: 'provider_unavailable_or_short_text' }; // Graceful fallback to V2 ensemble
   }
 
   try {
@@ -42,8 +42,8 @@ ${text}
       };
     }
   } catch (err) {
-    // Silent fallback to local ensemble
+    return { available: false, reason: 'provider_error', error: err.message };
   }
 
-  return null;
+  return { available: false, reason: 'malformed_response' };
 }

@@ -118,6 +118,24 @@ export async function initDb() {
     );
   `);
 
+  // V2.0 Schema Upgrades (Safely add columns if they don't exist)
+  const v2Columns = [
+    "ALTER TABLE ai_detections ADD COLUMN detector_version TEXT DEFAULT '1.0'",
+    "ALTER TABLE ai_detections ADD COLUMN reliability TEXT DEFAULT 'moderate'",
+    "ALTER TABLE ai_detections ADD COLUMN evidence_coverage INTEGER DEFAULT 0",
+    "ALTER TABLE ai_detections ADD COLUMN active_families TEXT DEFAULT '[]'",
+    "ALTER TABLE ai_detections ADD COLUMN unavailable_families TEXT DEFAULT '[]'",
+    "ALTER TABLE ai_detections ADD COLUMN fallback_mode INTEGER DEFAULT 0"
+  ];
+
+  for (const query of v2Columns) {
+    try {
+      await db.run(query);
+    } catch (e) {
+      // Ignore errors (column already exists)
+    }
+  }
+
   await db.run(`
     CREATE TABLE IF NOT EXISTS ai_humanizations (
       id TEXT PRIMARY KEY,
