@@ -125,7 +125,14 @@ export async function initDb() {
     "ALTER TABLE ai_detections ADD COLUMN evidence_coverage INTEGER DEFAULT 0",
     "ALTER TABLE ai_detections ADD COLUMN active_families TEXT DEFAULT '[]'",
     "ALTER TABLE ai_detections ADD COLUMN unavailable_families TEXT DEFAULT '[]'",
-    "ALTER TABLE ai_detections ADD COLUMN fallback_mode INTEGER DEFAULT 0"
+    "ALTER TABLE ai_detections ADD COLUMN fallback_mode INTEGER DEFAULT 0",
+    // V2.1 Additions
+    "ALTER TABLE ai_detections ADD COLUMN text_hash TEXT",
+    "ALTER TABLE ai_detections ADD COLUMN sentence_results TEXT",
+    "ALTER TABLE ai_detections ADD COLUMN calibration_version TEXT DEFAULT '1.0'",
+    "ALTER TABLE ai_detections ADD COLUMN uncertainty INTEGER DEFAULT 0",
+    "ALTER TABLE ai_detections ADD COLUMN evidence_agreement INTEGER DEFAULT 0",
+    "ALTER TABLE ai_detections ADD COLUMN mixed_authorship INTEGER DEFAULT 0"
   ];
 
   for (const query of v2Columns) {

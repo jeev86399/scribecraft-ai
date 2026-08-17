@@ -5,6 +5,8 @@
  * availability, and resolves cross-family disagreement to produce calibrated probabilities.
  */
 
+import { calibrateProbability } from './calibrationService.js';
+
 export function computeEvidenceConvergence(families) {
   const {
     familyA_Predictability,
@@ -51,7 +53,7 @@ export function computeEvidenceConvergence(families) {
            mlCount++;
        }
     }
-    const mlScore = mlCount > 0 ? (mlTotal / mlCount) * 100 : 0; // Convert to 0-100 scale
+    const mlScore = mlCount > 0 ? (mlTotal / mlCount) : 0; 
 
     if (mlCount > 0) {
         activeFamilies.push({ id: 'D', name: 'ML Classification', score: mlScore, weight: 0.35 });
@@ -101,15 +103,15 @@ export function computeEvidenceConvergence(families) {
   }
   const stdDev = Math.sqrt(variance);
 
-  // 5. Calculate Confidence & Reliability
-  // Confidence drops if evidence coverage is low or families strongly disagree
-  let confidence = evidenceCoverage;
+  // 5. Calibration Layer (V2.0)
+  // Retrieve word count from family G if available, else guess ~200
+  const wordCount = familyG_Integrity?.preprocessed?.wordCount || 200;
   
-  if (stdDev > 25) {
-      confidence -= 20; // High disagreement
-  } else if (stdDev > 15) {
-      confidence -= 10; // Moderate disagreement
-  }
+  const calibration = calibrateProbability(baseConvergence, wordCount, stdDev);
+  const calibratedScore = calibration.calibratedProbability;
+  
+  // Calculate Confidence based on evidence coverage and uncertainty
+  let confidence = evidenceCoverage - calibration.uncertainty;
 
   // Penalize for poor text integrity (Family G)
   if (familyG_Integrity?.available && familyG_Integrity.score < 80) {
@@ -125,22 +127,27 @@ export function computeEvidenceConvergence(families) {
   let agreementLevel = 'high';
   if (stdDev > 25) agreementLevel = 'low (strong disagreement)';
   else if (stdDev > 15) agreementLevel = 'moderate (mixed evidence)';
+  
+  // Evidence Agreement (0-100 score, inverse of standard deviation)
+  const evidenceAgreement = Math.max(0, Math.min(100, 100 - (stdDev * 1.5)));
 
   // 6. Classification Output
   let classification = 'uncertain';
-  // Allow classification if confidence is at least 35 (allows fallback mode A+B to classify)
   if (confidence >= 35) {
-      if (baseConvergence > 75) classification = 'likely_ai';
-      else if (baseConvergence > 60) classification = 'mixed_signals';
-      else if (baseConvergence < 40) classification = 'likely_human';
+      if (stdDev > 30) classification = 'mixed_signals'; // Very high disagreement -> possible mixed authorship
+      else if (calibratedScore > 75) classification = 'likely_ai';
+      else if (calibratedScore > 60) classification = 'mixed_signals';
+      else if (calibratedScore < 40) classification = 'likely_human';
       else classification = 'uncertain';
   } else {
       classification = 'insufficient_evidence';
   }
 
   return {
-      aiLikelihood: Math.round(baseConvergence),
+      aiLikelihood: calibratedScore,
       confidence,
+      uncertainty: calibration.uncertainty,
+      evidenceAgreement: Math.round(evidenceAgreement),
       reliability,
       evidenceCoverage: Math.round(evidenceCoverage),
       classification,

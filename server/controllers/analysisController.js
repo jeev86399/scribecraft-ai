@@ -99,9 +99,10 @@ export async function detectAI(req, res) {
         `INSERT INTO ai_detections (
            id, user_id, word_count, ai_likelihood, human_likelihood, confidence, 
            classification_label, summary_reasons, detector_version, reliability, 
-           evidence_coverage, active_families, unavailable_families, fallback_mode
+           evidence_coverage, active_families, unavailable_families, fallback_mode,
+           sentence_results, calibration_version, uncertainty, evidence_agreement, mixed_authorship
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           userId,
@@ -116,7 +117,12 @@ export async function detectAI(req, res) {
           resData.evidenceCoverage,
           JSON.stringify(resData.activeFamilies || []),
           JSON.stringify(resData.unavailableFamilies || []),
-          resData.fallbackMode ? 1 : 0
+          resData.fallbackMode ? 1 : 0,
+          JSON.stringify(result.sentences || []),
+          result.calibrationVersion || '1.0',
+          resData.uncertainty || 0,
+          resData.evidenceAgreement || 0,
+          resData.mixedAuthorship ? 1 : 0
         ]
       );
     }
@@ -169,7 +175,8 @@ export async function getAIDetectionHistory(req, res) {
     const userId = req.user.id;
     const history = await db.all(
       `SELECT id, word_count, ai_likelihood, human_likelihood, confidence, classification_label, summary_reasons, created_at,
-              detector_version, reliability, evidence_coverage, active_families, unavailable_families, fallback_mode
+              detector_version, reliability, evidence_coverage, active_families, unavailable_families, fallback_mode,
+              sentence_results, calibration_version, uncertainty, evidence_agreement, mixed_authorship
        FROM ai_detections WHERE user_id = ? ORDER BY created_at DESC LIMIT 20`,
       [userId]
     );
@@ -179,7 +186,9 @@ export async function getAIDetectionHistory(req, res) {
       summary_reasons: JSON.parse(item.summary_reasons || '[]'),
       active_families: JSON.parse(item.active_families || '[]'),
       unavailable_families: JSON.parse(item.unavailable_families || '[]'),
-      fallback_mode: item.fallback_mode === 1
+      sentence_results: JSON.parse(item.sentence_results || '[]'),
+      fallback_mode: item.fallback_mode === 1,
+      mixed_authorship: item.mixed_authorship === 1
     }));
 
     return res.json(formatted);

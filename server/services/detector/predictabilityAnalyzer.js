@@ -83,18 +83,19 @@ export function analyzePredictability(preprocessed) {
 
   const density = wordCount > 0 ? (templateMatchCount / (wordCount / 100)) : 0;
 
-  let signalScore = 10;
-  if (density >= 1.5) {
-    signalScore = 92;
-  } else if (density >= 0.8) {
-    signalScore = 75;
-  } else if (density >= 0.4) {
-    signalScore = 55;
-  }
+  // V2 Continuous Mapping: Convert density to probability using a logistic curve
+  // A density of 0.0 -> score ~10
+  // A density of 0.8 -> score ~70
+  // A density of 1.5+ -> score ~90+
+  // Logistic function: 100 / (1 + Math.exp(-4 * (density - 0.6)))
+  let signalScore = 100 / (1 + Math.exp(-4 * (density - 0.6)));
+  signalScore = Math.max(10, Math.min(99, signalScore)); // Floor at 10
 
-  // V2 length calibration: Shorter text has higher variance, penalize strong claims
-  if (wordCount < 100 && signalScore > 50) {
-      signalScore -= 20; // Lower confidence in short samples
+  // V2 length calibration: Shorter text has higher variance uncertainty
+  if (wordCount < 150) {
+      const uncertaintyWeight = Math.max(0, (150 - wordCount) / 150);
+      // Pull the score towards neutral (50) for very short text
+      signalScore = (signalScore * (1 - uncertaintyWeight)) + (50 * uncertaintyWeight);
   }
 
   let rating = 'Natural Phrasing';

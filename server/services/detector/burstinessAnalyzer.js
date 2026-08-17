@@ -49,16 +49,17 @@ export function analyzeBurstiness(preprocessed) {
     paraStdDev = Math.sqrt(paraVar);
   }
 
-  // CV < 0.25 is extremely uniform. CV > 0.6 is highly bursty (human).
-  let signalScore = 0;
-  if (cv < 0.25 && avgDelta < 6.0) signalScore = 80;
-  else if (cv < 0.40 && avgDelta < 7.5) signalScore = 65;
-  else if (cv < 0.55 && avgDelta < 9.0) signalScore = 40;
-  else signalScore = 10;
+  // V2 Continuous Mapping: Convert CV to probability using logistic decay
+  // We expect humans to have CV around 0.45 - 0.70.
+  // We expect AI to have CV around 0.15 - 0.35.
+  // Logistic function centered at cv=0.35, k=-12
+  let signalScore = 100 / (1 + Math.exp(12 * (cv - 0.35)));
 
-  // Short sample penalty
-  if (sentences.length < 5 && signalScore > 30) {
-    signalScore -= 20;
+  // Length normalization: Short text has higher natural variance uncertainty
+  // We pull the score towards 50 (uncertainty) based on length
+  if (sentences.length < 15) {
+      const uncertaintyWeight = Math.max(0, (15 - sentences.length) / 15);
+      signalScore = (signalScore * (1 - uncertaintyWeight)) + (50 * uncertaintyWeight);
   }
 
   let rating = 'High Natural Variation';

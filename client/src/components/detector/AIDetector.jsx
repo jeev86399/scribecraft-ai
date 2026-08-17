@@ -104,13 +104,15 @@ export function AIDetector() {
 
   const handleCopyReport = () => {
     if (!result) return;
-    const resData = result.result || {};
+    const resData = result.document || result.result || {};
     const reportText = `ScribeCraft AI v2.0 Content Detection Estimate:
 Likelihood: ${resData.aiLikelihood}% (${resData.classification})
 Human Pattern Signal: ${100 - resData.aiLikelihood}%
 AI Pattern Signal: ${resData.aiLikelihood}%
 Reliability: ${resData.reliability}
 Confidence: ${resData.confidence}
+Uncertainty: ±${resData.uncertainty || 0}%
+Evidence Agreement: ${resData.evidenceAgreement || 0}%
 Evidence Coverage: ${resData.evidenceCoverage}%
 
 Active Families:
@@ -140,6 +142,8 @@ Disclaimer: ${(result.limitations || []).join(' ')}`;
       console.error('Delete history error:', err);
     }
   };
+
+  const resData = result ? (result.document || result.result || {}) : {};
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '2rem 3rem', backgroundColor: 'var(--bg-app)' }}>
@@ -385,13 +389,13 @@ Disclaimer: ${(result.limitations || []).join(' ')}`;
                   border: '1px solid var(--border-color)',
                   boxShadow: 'var(--shadow-md)'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <span style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
                       AI WRITING PATTERN ESTIMATE
                     </span>
 
-                    <div style={{ display: 'flex', gap: '0.35rem' }}>
-                      {result.result.fallbackMode && (
+                    <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                      {resData.fallbackMode && (
                          <span style={{
                           fontSize: '0.72rem',
                           fontWeight: 700,
@@ -412,7 +416,7 @@ Disclaimer: ${(result.limitations || []).join(' ')}`;
                         backgroundColor: 'rgba(99,102,241,0.12)',
                         color: '#6366f1'
                       }}>
-                        Confidence: {result.result.confidence}%
+                        Confidence: {resData.confidence}% ±{resData.uncertainty || 0}
                       </span>
 
                       <span style={{
@@ -420,18 +424,18 @@ Disclaimer: ${(result.limitations || []).join(' ')}`;
                         fontWeight: 700,
                         padding: '0.2rem 0.55rem',
                         borderRadius: '9999px',
-                        backgroundColor: result.result.reliability === 'high' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
-                        color: result.result.reliability === 'high' ? '#10b981' : '#f59e0b',
+                        backgroundColor: resData.reliability === 'high' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
+                        color: resData.reliability === 'high' ? '#10b981' : '#f59e0b',
                         textTransform: 'capitalize'
                       }}>
-                        Reliability: {result.result.reliability}
+                        Reliability: {resData.reliability}
                       </span>
                     </div>
                   </div>
 
                   <div style={{ marginBottom: '1.25rem' }}>
-                    <h3 style={{ fontSize: '1.75rem', fontWeight: 800, color: result.result.aiLikelihood > 50 ? 'var(--color-spelling)' : '#10b981', marginBottom: '0.25rem' }}>
-                      {result.result.aiLikelihood}% {result.result.classification}
+                    <h3 style={{ fontSize: '1.75rem', fontWeight: 800, color: resData.aiLikelihood > 50 ? 'var(--color-spelling)' : '#10b981', marginBottom: '0.25rem' }}>
+                      {resData.aiLikelihood}% {resData.classification}
                     </h3>
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                       Text analyzed: {result.evidence?.integrity?.preprocessed?.wordCount || 0} words
@@ -444,10 +448,10 @@ Disclaimer: ${(result.limitations || []).join(' ')}`;
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.25rem' }}>
                         <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>Human-Pattern Signal</span>
-                        <span style={{ fontWeight: 700, color: '#10b981' }}>{100 - result.result.aiLikelihood}%</span>
+                        <span style={{ fontWeight: 700, color: '#10b981' }}>{100 - resData.aiLikelihood}%</span>
                       </div>
                       <div style={{ height: '6px', borderRadius: '3px', backgroundColor: 'var(--border-color)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${100 - result.result.aiLikelihood}%`, backgroundColor: '#10b981', transition: 'width 0.5s ease' }} />
+                        <div style={{ height: '100%', width: `${100 - resData.aiLikelihood}%`, backgroundColor: '#10b981', transition: 'width 0.5s ease' }} />
                       </div>
                     </div>
 
@@ -455,10 +459,10 @@ Disclaimer: ${(result.limitations || []).join(' ')}`;
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.25rem' }}>
                         <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>AI-Pattern Signal</span>
-                        <span style={{ fontWeight: 700, color: result.result.aiLikelihood > 50 ? 'var(--color-spelling)' : '#f59e0b' }}>{result.result.aiLikelihood}%</span>
+                        <span style={{ fontWeight: 700, color: resData.aiLikelihood > 50 ? 'var(--color-spelling)' : '#f59e0b' }}>{resData.aiLikelihood}%</span>
                       </div>
                       <div style={{ height: '6px', borderRadius: '3px', backgroundColor: 'var(--border-color)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${result.result.aiLikelihood}%`, backgroundColor: result.result.aiLikelihood > 50 ? 'var(--color-spelling)' : '#f59e0b', transition: 'width 0.5s ease' }} />
+                        <div style={{ height: '100%', width: `${resData.aiLikelihood}%`, backgroundColor: resData.aiLikelihood > 50 ? 'var(--color-spelling)' : '#f59e0b', transition: 'width 0.5s ease' }} />
                       </div>
                     </div>
                   </div>
@@ -489,26 +493,55 @@ Disclaimer: ${(result.limitations || []).join(' ')}`;
                   </div>
                 </div>
 
+                {/* Sentence Level Breakdown (if available) */}
+                {result.sentences && result.sentences.length > 0 && (
+                  <div style={{ padding: '1.25rem', borderRadius: '16px', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
+                    <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.85rem' }}>
+                      Sentence Analysis (V2.0 Highlight)
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '300px', overflowY: 'auto' }}>
+                      {result.sentences.map((s, idx) => (
+                        <div key={idx} style={{ 
+                          padding: '0.75rem', 
+                          borderRadius: '8px', 
+                          backgroundColor: 'var(--bg-app)', 
+                          borderLeft: `4px solid ${s.aiLikelihood > 75 ? 'var(--color-spelling)' : (s.aiLikelihood > 50 ? '#f59e0b' : '#10b981')}` 
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Sentence {idx + 1}</span>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: s.aiLikelihood > 75 ? 'var(--color-spelling)' : (s.aiLikelihood > 50 ? '#f59e0b' : '#10b981') }}>
+                              {s.aiLikelihood}% AI
+                            </span>
+                          </div>
+                          <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: 1.5, margin: 0 }}>
+                            {s.text}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ padding: '1.25rem', borderRadius: '16px', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
                   <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.85rem' }}>
                     Active Evidence Families
                   </h4>
 
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.55rem' }}>
-                    {(result.result.activeFamilies || []).map((fam, idx) => (
+                    {(resData.activeFamilies || []).map((fam, idx) => (
                       <span key={idx} style={{ padding: '0.25rem 0.65rem', borderRadius: '6px', backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-color)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                         {fam}
                       </span>
                     ))}
                   </div>
                   
-                  {result.result.unavailableFamilies?.length > 0 && (
+                  {resData.unavailableFamilies?.length > 0 && (
                       <div style={{ marginTop: '1rem', paddingTop: '0.85rem', borderTop: '1px solid var(--border-color)' }}>
                          <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: '#f59e0b', marginBottom: '0.5rem' }}>
                             Unavailable (Fallback Triggered)
                          </h4>
                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.55rem' }}>
-                            {(result.result.unavailableFamilies || []).map((fam, idx) => (
+                            {(resData.unavailableFamilies || []).map((fam, idx) => (
                               <span key={idx} style={{ padding: '0.25rem 0.65rem', borderRadius: '6px', backgroundColor: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)', fontSize: '0.8rem', color: '#f59e0b' }}>
                                 {fam}
                               </span>
@@ -525,12 +558,18 @@ Disclaimer: ${(result.limitations || []).join(' ')}`;
                   <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.55rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                       <li style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem' }}>
                         <span style={{ color: 'var(--primary)', fontWeight: 700 }}>•</span>
-                        <span style={{ lineHeight: 1.45 }}>Overall Agreement: {result.result.agreementLevel}</span>
+                        <span style={{ lineHeight: 1.45 }}>Overall Agreement: {resData.agreementLevel}</span>
                       </li>
                       <li style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem' }}>
                         <span style={{ color: 'var(--primary)', fontWeight: 700 }}>•</span>
-                        <span style={{ lineHeight: 1.45 }}>Evidence Coverage: {result.result.evidenceCoverage}%</span>
+                        <span style={{ lineHeight: 1.45 }}>Evidence Coverage: {resData.evidenceCoverage}%</span>
                       </li>
+                      {resData.mixedAuthorship && (
+                        <li style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem' }}>
+                          <span style={{ color: '#f59e0b', fontWeight: 700 }}>•</span>
+                          <span style={{ lineHeight: 1.45, color: '#f59e0b' }}>Strong indicators of Mixed Authorship (Frankenstein Text).</span>
+                        </li>
+                      )}
                   </ul>
                 </div>
                 
