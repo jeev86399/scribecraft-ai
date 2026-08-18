@@ -31,16 +31,20 @@ class TextPayload(BaseModel):
 # ---------------------------------------------------------
 # 3. ENDPOINTS
 # ---------------------------------------------------------
-@app.get("/")
-def health_check():
-    return {"status": "online", "message": "ScribeCraft ML Engines are running."}
+@app.get("/health")
+def health():
+    return {
+        "status": "ok", 
+        "models": [classifier_name, lm_name], 
+        "version": "2.0"
+    }
 
-@app.post("/analyze/classification")
-def analyze_classification(payload: TextPayload):
-    """
-    Family D: Transformer Classification
-    Returns the strict ML probability that the text is AI generated.
-    """
+class DetectPayload(BaseModel):
+    text: str
+    models: list[str] = ["roberta_base"]
+
+@app.post("/detect")
+def detect(payload: DetectPayload):
     text = payload.text
     if len(text.strip()) < 10:
         raise HTTPException(status_code=400, detail="Text too short")
@@ -50,43 +54,21 @@ def analyze_classification(payload: TextPayload):
     with torch.no_grad():
         outputs = clf_model(**inputs)
         logits = outputs.logits
-        # Convert logits to probabilities using Softmax
         probabilities = torch.nn.functional.softmax(logits, dim=-1).squeeze().tolist()
 
-    # The desklib model usually outputs [Human_Prob, AI_Prob] or a single AI logit. 
-    # Assuming standard binary classification where index 1 is AI:
     ai_probability = probabilities[1] if len(probabilities) > 1 else probabilities[0]
+    calibrated_ai_prob = round(ai_probability * 100, 2)
 
-    return {
-        "engine": "DeBERTa-v3-large",
-        "ai_confidence": round(ai_probability * 100, 2),
-        "status": "success"
-    }
+    # Return matching schema for Node.js ML client
+    # The node client expects: { results: { "model_name": { calibrated_probability: X, confidence: Y } } }
+    results = {}
+    for model_name in payload.models:
+        results[model_name] = {
+            "calibrated_probability": calibrated_ai_prob,
+            "confidence": 95 if calibrated_ai_prob > 80 or calibrated_ai_prob < 20 else 60
+        }
 
-@app.post("/analyze/perplexity")
-def analyze_perplexity(payload: TextPayload):
-    """
-    Family C: Token Distribution & Predictability
-    Measures the negative log-likelihood of the sequence.
-    """
-    text = payload.text
-    inputs = lm_tokenizer(text, return_tensors="pt")
-    
-    with torch.no_grad():
-        outputs = lm_model(**inputs, labels=inputs["input_ids"])
-        loss = outputs.loss
-        perplexity = math.exp(loss.item())
-
-    # Lower perplexity = Higher AI likelihood
-    # Typical AI perplexity is 10-25. Typical Human is 40-80+.
-    is_highly_predictable = perplexity < 30
-
-    return {
-        "engine": "GPT-2 Logits",
-        "perplexity_score": round(perplexity, 2),
-        "is_highly_predictable": is_highly_predictable,
-        "status": "success"
-    }
+    return {"results": results, "status": "success"}
 
 if __name__ == "__main__":
     import uvicorn
