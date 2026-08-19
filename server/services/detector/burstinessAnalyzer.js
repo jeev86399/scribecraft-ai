@@ -55,12 +55,8 @@ export function analyzeBurstiness(preprocessed) {
   // Logistic function centered at cv=0.35, k=-12
   let signalScore = 100 / (1 + Math.exp(12 * (cv - 0.35)));
 
-  // Length normalization: Short text has higher natural variance uncertainty
-  // We pull the score towards 50 (uncertainty) based on length
-  if (sentences.length < 15) {
-      const uncertaintyWeight = Math.max(0, (15 - sentences.length) / 15);
-      signalScore = (signalScore * (1 - uncertaintyWeight)) + (50 * uncertaintyWeight);
-  }
+  // Length normalization has been removed from this file.
+  // It is now strictly handled globally by calibrationService.js.
 
   let rating = 'High Natural Variation';
   if (signalScore >= 60) rating = 'High Uniformity (Potential Generative Pattern)';

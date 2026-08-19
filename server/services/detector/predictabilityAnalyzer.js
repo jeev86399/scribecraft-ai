@@ -91,12 +91,8 @@ export function analyzePredictability(preprocessed) {
   let signalScore = 100 / (1 + Math.exp(-4 * (density - 0.6)));
   signalScore = Math.max(10, Math.min(99, signalScore)); // Floor at 10
 
-  // V2 length calibration: Shorter text has higher variance uncertainty
-  if (wordCount < 150) {
-      const uncertaintyWeight = Math.max(0, (150 - wordCount) / 150);
-      // Pull the score towards neutral (50) for very short text
-      signalScore = (signalScore * (1 - uncertaintyWeight)) + (50 * uncertaintyWeight);
-  }
+  // V2 length calibration has been removed from this file.
+  // It is now strictly handled globally by calibrationService.js.
 
   let rating = 'Natural Phrasing';
   if (signalScore >= 70) rating = 'Highly Predictable Structural Templates';
