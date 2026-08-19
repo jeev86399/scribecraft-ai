@@ -93,7 +93,7 @@ export async function detectAI(req, res) {
     // Save history for authenticated users if analysis was valid
     if (userId && result.success) {
       const id = `det_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-      const resData = result.result;
+      const resData = result.document || result.result;
       
       await db.run(
         `INSERT INTO ai_detections (
