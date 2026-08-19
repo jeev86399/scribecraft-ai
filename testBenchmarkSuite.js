@@ -28,7 +28,8 @@ async function runBenchmark() {
 
   for (const item of BENCHMARK_DATA) {
     const result = await detectAITextEnsemble(item.text, { enableDiagnosticTrace: false });
-    const aiScore = result.aiLikelihood;
+    const docResult = result.document || result;
+    const aiScore = docResult.aiLikelihood;
     
     // Stricter Evaluation Bounds for V4:
     // AI text MUST score >= 70
@@ -47,10 +48,10 @@ async function runBenchmark() {
     }
     
     console.log(`Expected: ${item.expected}`);
-    console.log(`Score: ${aiScore}% AI Likelihood (${result.classificationLabel})`);
-    console.log(`Confidence: ${result.confidence} | Uncertainty: ${result.uncertainty}`);
-    if (result.reasons && result.reasons.length > 0) {
-      console.log(`Top Reason: ${result.reasons[0]}`);
+    console.log(`Score: ${aiScore}% AI Likelihood (${docResult.classificationLabel})`);
+    console.log(`Confidence: ${docResult.confidence} | Uncertainty: ${docResult.uncertainty}`);
+    if (docResult.reasons && docResult.reasons.length > 0) {
+      console.log(`Top Reason: ${docResult.reasons[0]}`);
     }
     console.log("-----------------------------------------");
   }

@@ -10,10 +10,10 @@ export function calibrateProbability(rawProbability, textLength, standardDeviati
   // Shorter text means higher temperature (flatter probability, closer to 50%)
   // Base temperature is 1.0 for ~300+ words.
   let temperature = 1.0;
-  if (textLength < 50) {
-    temperature = 2.5;
-  } else if (textLength < 150) {
-    temperature = 1.5 + (150 - textLength) / 100;
+  if (textLength < 30) {
+    temperature = 1.4;
+  } else if (textLength < 80) {
+    temperature = 1.1 + (80 - textLength) / 200;
   }
 
   // Convert raw 0-100 to logit

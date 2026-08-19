@@ -30,7 +30,7 @@ export async function detectAIWithML(text, models = ['roberta_base']) {
   }
 
   try {
-    const ML_URL = process.env.ML_DETECTOR_URL || 'http://127.0.0.1:8000';
+    const ML_URL = process.env.ML_DETECTOR_URL || 'http://127.0.0.1:5002';
     const endpoint = `${ML_URL.replace(/\/$/, '')}/detect`;
     
     const controller = new AbortController();
@@ -166,7 +166,7 @@ export async function pingMLDetector() {
   }
 
   try {
-    const ML_URL = process.env.ML_DETECTOR_URL || 'http://127.0.0.1:8000';
+    const ML_URL = process.env.ML_DETECTOR_URL || 'http://127.0.0.1:5002';
     const endpoint = `${ML_URL.replace(/\/$/, '')}/health`;
     
     const controller = new AbortController();

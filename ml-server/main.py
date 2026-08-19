@@ -9,18 +9,23 @@ app = FastAPI(title="ScribeCraft AI ML Engine")
 # ---------------------------------------------------------
 # 1. LOAD MODELS (This will take a few minutes the first time!)
 # ---------------------------------------------------------
-print("Loading DeBERTa Classification Model...")
-# Using a top-performing RAID benchmark model based on DeBERTa-v3
-classifier_name = "desklib/ai-text-detector-v1.01" 
-clf_tokenizer = AutoTokenizer.from_pretrained(classifier_name)
-clf_model = AutoModelForSequenceClassification.from_pretrained(classifier_name)
+models_loaded = False
+try:
+    print("Loading DeBERTa Classification Model...")
+    # Using a top-performing RAID benchmark model based on DeBERTa-v3
+    classifier_name = "desklib/ai-text-detector-v1.01" 
+    clf_tokenizer = AutoTokenizer.from_pretrained(classifier_name)
+    clf_model = AutoModelForSequenceClassification.from_pretrained(classifier_name)
 
-print("Loading GPT-2 for Token Predictability...")
-lm_name = "gpt2"
-lm_tokenizer = AutoTokenizer.from_pretrained(lm_name)
-lm_model = AutoModelForCausalLM.from_pretrained(lm_name)
-
-print("✅ Models Loaded Successfully!")
+    print("Loading GPT-2 for Token Predictability...")
+    lm_name = "gpt2"
+    lm_tokenizer = AutoTokenizer.from_pretrained(lm_name)
+    lm_model = AutoModelForCausalLM.from_pretrained(lm_name)
+    
+    models_loaded = True
+    print("✅ Models Loaded Successfully!")
+except Exception as e:
+    print(f"❌ Failed to load models: {e}")
 
 # ---------------------------------------------------------
 # 2. DEFINE DATA STRUCTURES
@@ -34,8 +39,8 @@ class TextPayload(BaseModel):
 @app.get("/health")
 def health():
     return {
-        "status": "ok", 
-        "models": [classifier_name, lm_name], 
+        "status": "ok" if models_loaded else "degraded", 
+        "models": ["desklib/ai-text-detector-v1.01", "gpt2"] if models_loaded else [], 
         "version": "2.0"
     }
 
@@ -45,6 +50,9 @@ class DetectPayload(BaseModel):
 
 @app.post("/detect")
 def detect(payload: DetectPayload):
+    if not models_loaded:
+        raise HTTPException(status_code=503, detail="Local models failed to load due to environment constraint")
+        
     text = payload.text
     if len(text.strip()) < 10:
         raise HTTPException(status_code=400, detail="Text too short")
@@ -72,4 +80,4 @@ def detect(payload: DetectPayload):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=5002)
