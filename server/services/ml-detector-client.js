@@ -73,7 +73,8 @@ export async function detectAIWithML(text, models = ['roberta_base']) {
     const resultData = {
         available: true,
         state: 'ACTIVE',
-        results: processedResults
+        results: processedResults,
+        sentences: data.sentences || []
     };
 
     inferenceCache.set(hash, resultData);

@@ -1,0 +1,20 @@
+dataset:
+  train_path: "datasets/processed/baseline_train.parquet"
+  val_path: "datasets/processed/baseline_val.parquet"
+  text_column: "text"
+  label_column: "label"
+
+model:
+  transformer_name: "distilbert-base-uncased"
+  use_stylometry: true
+  max_length: 512
+
+training:
+  batch_size: 16
+  learning_rate: 2.0e-5
+  epochs: 3
+  early_stopping_patience: 1
+  device: "mps" # Will fallback to cpu if unavailable
+
+output:
+  checkpoint_dir: "checkpoints/baseline"

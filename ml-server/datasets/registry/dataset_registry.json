@@ -1,0 +1,26 @@
+{
+  "datasets": [
+    {
+      "name": "Hello-SimpleAI/HC3",
+      "version": "1.0.0",
+      "source": "Hugging Face",
+      "license": "CC BY-SA 4.0",
+      "description": "Human ChatGPT Comparison Corpus",
+      "subsets": ["all"],
+      "domains": ["reddit", "wiki", "medical", "finance", "open_qa"],
+      "generator_metadata": {
+        "family": "GPT-3.5",
+        "version": "ChatGPT"
+      }
+    },
+    {
+      "name": "rotten_tomatoes",
+      "version": "1.0.0",
+      "source": "Hugging Face",
+      "license": "Custom",
+      "description": "Human-written movie reviews (baseline human domain)",
+      "subsets": ["default"],
+      "domains": ["reviews"]
+    }
+  ]
+}

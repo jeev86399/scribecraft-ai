@@ -47,17 +47,26 @@ export function computeEvidenceConvergence(families) {
     // Average the available ML models if calibrated
     let mlTotal = 0;
     let mlCount = 0;
+    let mlConfidenceAvg = 0;
     for (const [modelName, data] of Object.entries(familyD_ML.results)) {
-       if (data.modelAvailable) {
-           mlTotal += data.probability;
+       // Support V2 and V3 payloads
+       const probability = data.calibrated_probability !== undefined ? data.calibrated_probability : data.probability;
+       const modelAvail = data.modelAvailable !== undefined ? data.modelAvailable : true;
+       
+       if (modelAvail && probability !== undefined) {
+           mlTotal += probability;
+           mlConfidenceAvg += (data.confidence || 80);
            mlCount++;
        }
     }
     const mlScore = mlCount > 0 ? (mlTotal / mlCount) : 0; 
+    const mlConf = mlCount > 0 ? (mlConfidenceAvg / mlCount) : 0;
 
     if (mlCount > 0) {
-        activeFamilies.push({ id: 'D', name: 'ML Classification', score: mlScore, weight: 0.35 });
-        evidenceCoverage += 35;
+        // ML weight drops if its internal confidence is low
+        const dynamicMLWeight = 0.35 * (mlConf / 100);
+        activeFamilies.push({ id: 'D', name: 'ML Classification', score: mlScore, weight: dynamicMLWeight });
+        evidenceCoverage += (35 * (mlConf / 100));
     } else {
         unavailableFamilies.push('Family D (ML Classification)');
     }

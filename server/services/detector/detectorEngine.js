@@ -59,52 +59,48 @@ export async function detectAITextEnsemble(rawText, options = {}) {
 
   const convergence = computeEvidenceConvergence(families);
 
-  // 4b. Sentence-level analysis (V2)
+  // 4b. Sentence-level analysis (V2.1 - Real ML integration)
   const sentenceResults = [];
   const spans = [];
-  
-  // Lightweight sentence probability using structural & predictability proxies
   let currentSpan = null;
-  
+
   preprocessed.sentences.forEach((sentence, index) => {
-      // Basic sentence heuristic: longer sentences with generic phrasing score higher
-      let sentenceLikelihood = convergence.aiLikelihood; // Baseline from global context
-      
-      // We can use the predictability analyzer on the single sentence (mocking preprocessed structure)
-      const singleSentPre = { normalizedText: sentence, wordCount: sentence.split(/\s+/).filter(Boolean).length };
-      const pred = analyzePredictability(singleSentPre);
-      
-      if (pred.available) {
-          sentenceLikelihood = (sentenceLikelihood * 0.5) + (pred.clicheScore * 0.5);
+      let sentenceLikelihood = null;
+      let conf = 0;
+      let evidence = [];
+
+      // If ML service provided sentence-level predictions, use them
+      if (mlResults?.sentences && mlResults.sentences[index]) {
+          sentenceLikelihood = mlResults.sentences[index].probability;
+          conf = mlResults.sentences[index].confidence || 80;
+          evidence.push("ml_classifier");
       }
-      
-      // Smooth the score
-      sentenceLikelihood = Math.max(10, Math.min(95, Math.round(sentenceLikelihood)));
-      
-      const conf = Math.max(0, 100 - Math.max(0, 15 - singleSentPre.wordCount) * 5); // Low conf for <15 words
-      
+
+      // We no longer fake sentence probabilities with heuristics alone
       sentenceResults.push({
           index,
           aiLikelihood: sentenceLikelihood,
           confidence: conf,
-          evidence: ["context", "structural"]
+          evidence: evidence
       });
-      
-      // Span tracking
-      if (sentenceLikelihood > 65) {
-          if (!currentSpan) {
-              currentSpan = { startSentence: index, endSentence: index, aiLikelihood: sentenceLikelihood, count: 1 };
+
+      // Span tracking (only if we have real ML data)
+      if (sentenceLikelihood !== null) {
+          if (sentenceLikelihood > 65) {
+              if (!currentSpan) {
+                  currentSpan = { startSentence: index, endSentence: index, aiLikelihood: sentenceLikelihood, count: 1 };
+              } else {
+                  currentSpan.endSentence = index;
+                  currentSpan.aiLikelihood += sentenceLikelihood;
+                  currentSpan.count++;
+              }
           } else {
-              currentSpan.endSentence = index;
-              currentSpan.aiLikelihood += sentenceLikelihood;
-              currentSpan.count++;
-          }
-      } else {
-          if (currentSpan) {
-              currentSpan.aiLikelihood = Math.round(currentSpan.aiLikelihood / currentSpan.count);
-              delete currentSpan.count;
-              spans.push(currentSpan);
-              currentSpan = null;
+              if (currentSpan) {
+                  currentSpan.aiLikelihood = Math.round(currentSpan.aiLikelihood / currentSpan.count);
+                  delete currentSpan.count;
+                  spans.push(currentSpan);
+                  currentSpan = null;
+              }
           }
       }
   });
