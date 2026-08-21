@@ -3,3 +3,7 @@ ml_env/
 scribecraft.db
 .env
 .DS_Store
+
+ml-server/checkpoints/
+ml-server/datasets/processed/
+ml-server/venv311/
