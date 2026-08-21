@@ -34,7 +34,7 @@ export async function detectAIWithML(text, models = ['roberta_base']) {
     const endpoint = `${ML_URL.replace(/\/$/, '')}/detect`;
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // Increased timeout to 30s
     
     let data;
     const response = await fetch(endpoint, {

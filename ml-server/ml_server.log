@@ -1,4 +1,9 @@
-INFO:     Started server process [31586]
+INFO:     Started server process [43093]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:5002 (Press CTRL+C to quit)
+Loading DeBERTa Classification Model...
+❌ Failed to load models: I/O error: IO Error: No space left on device (os error 28)
+INFO:     127.0.0.1:65234 - "GET /health HTTP/1.1" 200 OK
+/Users/welcome/.local/share/uv/python/cpython-3.11.16-macos-x86_64-none/lib/python3.11/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

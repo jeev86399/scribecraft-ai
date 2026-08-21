@@ -29,8 +29,8 @@ Text to assess:
 ${text}
 """`;
 
-    // Timeout is 2500ms
-    const parsed = await callGeminiApi(prompt, 2048, 0.0, 2500);
+    // Allow up to 15 seconds for LLM generation
+    const parsed = await callGeminiApi(prompt, 2048, 0.0, 15000);
 
     if (parsed && typeof parsed.aiPatternSignal === 'number') {
       return {
