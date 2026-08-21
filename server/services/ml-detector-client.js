@@ -37,7 +37,7 @@ export async function detectAIWithML(text, models = ['roberta_base']) {
     const timeoutId = setTimeout(() => controller.abort(), 3000);
     
     let data;
-    const response = await fetch(ML_URL, {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, models }),
