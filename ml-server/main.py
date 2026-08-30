@@ -1,10 +1,12 @@
 import os
 import torch
+import pickle
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from transformers import AutoTokenizer
 from pathlib import Path
 import sys
+import numpy as np
 
 # Add parent directory to path to import models
 sys.path.append(str(Path(__file__).parent))
@@ -15,6 +17,7 @@ app = FastAPI(title="ScribeCraft AI ML Engine (V3)")
 models_loaded = False
 model = None
 tokenizer = None
+calibrator = None
 device = torch.device("cpu")
 
 if torch.backends.mps.is_available():
@@ -32,17 +35,28 @@ try:
     model = DetectorEnsemble(transformer_name=transformer_name)
     
     # Load checkpoint
-    checkpoint_path = Path(__file__).parent / "checkpoints/baseline/best_model.pt"
+    v3_dir = Path(__file__).parent / "models" / "v3"
+    checkpoint_path = v3_dir / "best_model.pt"
+    calibrator_path = v3_dir / "isotonic_calibrator.pkl"
+    
     if checkpoint_path.exists():
         try:
             model.load_state_dict(torch.load(checkpoint_path, map_location=device))
-            print("✅ Models Loaded Successfully!")
+            print("✅ V3 Models Loaded Successfully!")
         except RuntimeError as e:
-            print(f"⚠️ Warning: Could not load all model weights due to architecture change. Using initialized weights. ({e})")
+            print(f"⚠️ Warning: Could not load all model weights. Using initialized weights. ({e})")
             
         model.to(device)
         model.eval()
         models_loaded = True
+        
+        if calibrator_path.exists():
+            with open(calibrator_path, 'rb') as f:
+                calibrator = pickle.load(f)
+            print("✅ Isotonic Calibrator Loaded Successfully!")
+        else:
+            print("⚠️ Warning: No Isotonic Calibrator found.")
+            
     else:
         print(f"❌ Checkpoint not found at {checkpoint_path}. Please train the model first.")
 except Exception as e:
@@ -74,15 +88,95 @@ def split_into_sentences(text):
     sentences = re.split(r'(?<=[.!?]) +', text)
     return [s.strip() for s in sentences if len(s.strip()) > 0]
 
+def determine_evidence_tier(word_count):
+    if word_count < 30:
+        return "VERY SHORT (LOW EVIDENCE)"
+    elif word_count < 150:
+        return "SHORT (LIMITED EVIDENCE)"
+    elif word_count < 500:
+        return "MEDIUM (REASONABLE EVIDENCE)"
+    else:
+        return "LONG (STRONGER EVIDENCE)"
+
+def determine_classification(ai_prob, human_prob, mixed_prob, word_count):
+    if word_count < 30:
+        return "UNCERTAIN"
+        
+    if mixed_prob > 0.4:
+        return "MIXED / AI-ASSISTED"
+    
+    if ai_prob > 0.65:
+        return "LIKELY AI"
+    elif human_prob > 0.65:
+        return "LIKELY HUMAN"
+    else:
+        return "UNCERTAIN"
+
 @app.post("/detect")
 def detect(payload: DetectPayload):
     if not models_loaded:
-        raise HTTPException(status_code=503, detail="Local models failed to load due to environment constraint")
+        return {
+            "status": "success",
+            "results": {
+                "ensemble_v3": {
+                    "available": False,
+                    "classification": "UNCERTAIN",
+                    "confidence": "LOW",
+                    "reason": "ML model unavailable"
+                }
+            }
+        }
         
     text = payload.text
-    if len(text.strip()) < 10:
+    word_count = len(text.split())
+    
+    if word_count < 10:
         raise HTTPException(status_code=400, detail="Text too short")
 
+    # Sentence-level inference first
+    sentences = split_into_sentences(text)
+    sentence_results = []
+    
+    ai_sentence_count = 0
+    total_valid_sentences = 0
+    
+    if len(sentences) > 0 and len(sentences) < 500:
+        encodings = tokenizer(
+            sentences,
+            truncation=True,
+            padding='max_length',
+            max_length=128,
+            return_tensors='pt'
+        )
+        
+        with torch.no_grad():
+            s_input_ids = encodings['input_ids'].to(device)
+            s_attention_mask = encodings['attention_mask'].to(device)
+            s_logits = model(s_input_ids, s_attention_mask, sentences)
+            s_probs = torch.nn.functional.softmax(s_logits, dim=1).cpu().numpy()
+            
+        for i, s_prob in enumerate(s_probs):
+            s_human_prob = s_prob[0]
+            s_ai_prob = s_prob[1]
+            s_mixed_prob = s_prob[2]
+            
+            if calibrator is not None:
+                s_ai_prob = float(calibrator.predict([s_ai_prob])[0])
+            
+            s_calib_prob = round(s_ai_prob * 100, 2)
+            s_word_count = len(sentences[i].split())
+            
+            if s_word_count > 5:
+                total_valid_sentences += 1
+                if s_ai_prob > 0.6:
+                    ai_sentence_count += 1
+                    
+            s_conf = "HIGH" if s_word_count > 15 else "LOW"
+            sentence_results.append({
+                "probability": s_calib_prob,
+                "confidence": s_conf
+            })
+            
     # Document level inference
     encoding = tokenizer(
         text,
@@ -97,59 +191,42 @@ def detect(payload: DetectPayload):
     
     with torch.no_grad():
         logits = model(input_ids, attention_mask, [text])
-        probs = torch.nn.functional.softmax(logits, dim=1).squeeze()
-        ai_probability = probs[1].item() # index 1 is AI class
+        probs = torch.nn.functional.softmax(logits, dim=1).squeeze().cpu().numpy()
         
-    calibrated_ai_prob = round(ai_probability * 100, 2)
+    human_prob = float(probs[0])
+    ai_prob = float(probs[1])
+    mixed_prob = float(probs[2])
     
-    # Simple uncertainty based on text length and prob margin
-    margin = abs(0.5 - ai_probability)
-    word_count = len(text.split())
+    if calibrator is not None:
+        ai_prob = float(calibrator.predict([ai_prob])[0])
+        
+    calibrated_ai_prob = round(ai_prob * 100, 2)
+    calibrated_human_prob = round(human_prob * 100, 2)
     
-    confidence = 95
-    if word_count < 30:
-        confidence = 40
-    elif word_count < 100:
-        confidence = 70
+    # Calculate Estimated AI content proportion
+    estimated_ai_content = 0.0
+    if total_valid_sentences > 0:
+        estimated_ai_content = round((ai_sentence_count / total_valid_sentences) * 100, 2)
+    else:
+        estimated_ai_content = calibrated_ai_prob
         
-    if margin < 0.2: # near 0.5 boundary
-        confidence -= 20
-        
-    confidence = max(0, min(100, confidence))
-
-    # Sentence-level inference (for V3)
-    sentences = split_into_sentences(text)
-    sentence_results = []
+    classification = determine_classification(ai_prob, human_prob, mixed_prob, word_count)
+    evidence_tier = determine_evidence_tier(word_count)
     
-    if len(sentences) > 0 and len(sentences) < 50:
-        encodings = tokenizer(
-            sentences,
-            truncation=True,
-            padding='max_length',
-            max_length=128,
-            return_tensors='pt'
-        )
-        s_input_ids = encodings['input_ids'].to(device)
-        s_attention_mask = encodings['attention_mask'].to(device)
+    confidence = "HIGH" if word_count >= 150 else "MEDIUM" if word_count >= 30 else "LOW"
+    if classification == "UNCERTAIN":
+        confidence = "LOW"
         
-        with torch.no_grad():
-            s_logits = model(s_input_ids, s_attention_mask, sentences)
-            s_probs = torch.nn.functional.softmax(s_logits, dim=1)[:, 1].tolist()
-            
-        for i, s_prob in enumerate(s_probs):
-            s_calib_prob = round(s_prob * 100, 2)
-            s_word_count = len(sentences[i].split())
-            s_conf = 80 if s_word_count > 10 else 40
-            sentence_results.append({
-                "probability": s_calib_prob,
-                "confidence": s_conf
-            })
-
     results = {}
     for model_name in payload.models:
         results[model_name] = {
-            "calibrated_probability": calibrated_ai_prob,
-            "confidence": confidence
+            "available": True,
+            "classification": classification,
+            "confidence": confidence,
+            "evidence_tier": evidence_tier,
+            "ai_probability": calibrated_ai_prob,
+            "human_probability": calibrated_human_prob,
+            "estimated_ai_content": estimated_ai_content,
         }
 
     return {

@@ -1,0 +1,13 @@
+{
+    "timestamp": "2026-08-30T20:01:31.176480",
+    "git": {
+        "sha": "553666cd80a515828a777ee18ac69bd5d33daf96",
+        "branch": "main"
+    },
+    "model_architecture_version": "v2.0_transformer_stylometric",
+    "feature_version": "1.0",
+    "dataset_version": "1.0_HC3_subset",
+    "random_seed": 42,
+    "python_version": "Python 3.11.16",
+    "transformer_model": "distilbert-base-uncased"
+}

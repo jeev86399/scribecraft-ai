@@ -15,25 +15,24 @@ class DetectorEnsemble(nn.Module):
         self.feature_extractor = AdvancedFeatureExtractor()
         num_advanced_features = self.feature_extractor.get_num_features()
         
-        # Fusion layer
+        self.num_classes = 3 # 0: Human, 1: AI, 2: Mixed
+        
+        # Neural Fusion layer
         self.classifier = nn.Sequential(
             nn.Linear(hidden_size + num_advanced_features, 128),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(128, 2) # Binary classification: Human (0), AI (1)
+            nn.Linear(128, self.num_classes) 
         )
         
-    def forward(self, input_ids, attention_mask, raw_texts):
-        # 1. Transformer features (CLS token)
+    def extract_fusion_features(self, input_ids, attention_mask, raw_texts):
+        """Returns the raw concatenated features for LightGBM/Logistic Regression stacking."""
         outputs = self.transformer(input_ids=input_ids, attention_mask=attention_mask)
-        pooled_output = outputs.last_hidden_state[:, 0] # Take CLS token
-        
-        # 2. Advanced features
+        pooled_output = outputs.last_hidden_state[:, 0]
         adv_features = self.feature_extractor.extract(raw_texts).to(pooled_output.device)
-        
-        # 3. Fusion
-        combined_features = torch.cat((pooled_output, adv_features), dim=1)
-        
-        # 4. Classification
+        return torch.cat((pooled_output, adv_features), dim=1)
+
+    def forward(self, input_ids, attention_mask, raw_texts):
+        combined_features = self.extract_fusion_features(input_ids, attention_mask, raw_texts)
         logits = self.classifier(combined_features)
         return logits
