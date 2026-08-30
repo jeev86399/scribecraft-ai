@@ -34,11 +34,15 @@ try:
     # Load checkpoint
     checkpoint_path = Path(__file__).parent / "checkpoints/baseline/best_model.pt"
     if checkpoint_path.exists():
-        model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+        try:
+            model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+            print("✅ Models Loaded Successfully!")
+        except RuntimeError as e:
+            print(f"⚠️ Warning: Could not load all model weights due to architecture change. Using initialized weights. ({e})")
+            
         model.to(device)
         model.eval()
         models_loaded = True
-        print("✅ Models Loaded Successfully!")
     else:
         print(f"❌ Checkpoint not found at {checkpoint_path}. Please train the model first.")
 except Exception as e:

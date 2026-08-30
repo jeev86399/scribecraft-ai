@@ -14,6 +14,14 @@ import {
 } from 'lucide-react';
 import { api } from '../../services/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Initialize PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.mjs',
+  import.meta.url
+).toString();
+
 
 // Utility for debounce
 function useDebounce(value, delay) {
@@ -45,6 +53,7 @@ export function AIDetector() {
   const [showHistory, setShowHistory] = useState(false);
   
   const abortControllerRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const wordCount = text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
 
@@ -140,6 +149,38 @@ Disclaimer: ${(result.limitations || []).join(' ')}`;
       setHistory(prev => prev.filter(h => h.id !== id));
     } catch (err) {
       console.error('Delete history error:', err);
+    }
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      if (file.type === 'application/pdf') {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        
+        let fullText = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map(item => item.str).join(' ');
+          fullText += pageText + '\n\n';
+        }
+        setText(fullText.trim());
+      } else {
+        const textContent = await file.text();
+        setText(textContent);
+      }
+    } catch (err) {
+      setError('Failed to extract text from file: ' + err.message);
+    } finally {
+      setLoading(false);
+      // Reset input so the same file can be uploaded again if needed
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -241,6 +282,28 @@ Disclaimer: ${(result.limitations || []).join(' ')}`;
                   }}
                 >
                   Paste Text
+                </button>
+
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  accept=".pdf,.txt"
+                  style={{ display: 'none' }}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    padding: '0.35rem 0.65rem',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'transparent',
+                    color: 'var(--text-muted)',
+                    fontSize: '0.78rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Upload PDF
                 </button>
 
                 <button
