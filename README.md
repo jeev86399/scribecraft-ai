@@ -59,3 +59,4 @@ npm run dev
 - **Backend**: Express.js
 - **Database**: SQLite3
 - **AI Engine**: Google Gemini API integration (via `@google/genai` or direct API depending on implementation setup)
+ 
