@@ -12,7 +12,7 @@ import numpy as np
 sys.path.append(str(Path(__file__).parent))
 from models.ensemble import DetectorEnsemble
 
-app = FastAPI(title="ScribeCraft AI ML Engine (V3)")
+app = FastAPI(title="ScribeCraft AI ML Engine (V4)")
 
 models_loaded = False
 model = None
@@ -29,20 +29,20 @@ elif torch.cuda.is_available():
 # 1. LOAD MODELS
 # ---------------------------------------------------------
 try:
-    print(f"Loading V3 Ensemble Model on {device}...")
+    print(f"Loading V4 Ensemble Model on {device}...")
     transformer_name = "distilbert-base-uncased"
     tokenizer = AutoTokenizer.from_pretrained(transformer_name)
     model = DetectorEnsemble(transformer_name=transformer_name)
     
     # Load checkpoint
-    v3_dir = Path(__file__).parent / "models" / "v3"
-    checkpoint_path = v3_dir / "best_model.pt"
-    calibrator_path = v3_dir / "isotonic_calibrator.pkl"
+    v4_dir = Path(__file__).parent / "models" / "v4"
+    checkpoint_path = v4_dir / "best_model.pt"
+    calibrator_path = v4_dir / "isotonic_calibrator.pkl"
     
     if checkpoint_path.exists():
         try:
             model.load_state_dict(torch.load(checkpoint_path, map_location=device))
-            print("✅ V3 Models Loaded Successfully!")
+            print("✅ V4 Models Loaded Successfully!")
         except RuntimeError as e:
             print(f"⚠️ Warning: Could not load all model weights. Using initialized weights. ({e})")
             
@@ -70,7 +70,7 @@ class TextPayload(BaseModel):
 
 class DetectPayload(BaseModel):
     text: str
-    models: list[str] = ["ensemble_v3"]
+    models: list[str] = ["ensemble_v4"]
 
 # ---------------------------------------------------------
 # 3. ENDPOINTS
@@ -79,8 +79,8 @@ class DetectPayload(BaseModel):
 def health():
     return {
         "status": "ok" if models_loaded else "degraded",
-        "models": ["ensemble_v3"] if models_loaded else [],
-        "version": "3.0"
+        "models": ["ensemble_v4"] if models_loaded else [],
+        "version": "4.0"
     }
 
 def split_into_sentences(text):
@@ -115,16 +115,20 @@ def determine_classification(ai_prob, human_prob, mixed_prob, word_count):
 @app.post("/detect")
 def detect(payload: DetectPayload):
     if not models_loaded:
+        results = {}
+        for m in payload.models:
+            results[m] = {
+                "available": False,
+                "classification": "UNCERTAIN",
+                "confidence": "LOW",
+                "reason": "ML model unavailable",
+                "ai_probability": None,
+                "human_probability": None,
+                "estimated_ai_content": None
+            }
         return {
             "status": "success",
-            "results": {
-                "ensemble_v3": {
-                    "available": False,
-                    "classification": "UNCERTAIN",
-                    "confidence": "LOW",
-                    "reason": "ML model unavailable"
-                }
-            }
+            "results": results
         }
         
     text = payload.text

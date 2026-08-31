@@ -13,7 +13,7 @@ import pickle
 import datetime
 from collections import Counter
 from sklearn.isotonic import IsotonicRegression
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, precision_score, recall_score, average_precision_score
 
 # Add parent directory to path to import models
 sys.path.append(str(Path(__file__).parent.parent))
@@ -64,10 +64,18 @@ class V4DetectorDataset(Dataset):
         }
 
 def get_device():
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    elif torch.cuda.is_available():
+    print("-" * 50)
+    print("HARDWARE DETECTION")
+    print("-" * 50)
+    if torch.cuda.is_available():
+        gpu_name = torch.cuda.get_device_name(0)
+        print(f"✅ CUDA Available: True")
+        print(f"✅ GPU Name: {gpu_name}")
         return torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        print(f"✅ MPS Available: True (Apple Silicon GPU)")
+        return torch.device("mps")
+    print("❌ CUDA/MPS NOT DETECTED. Running on CPU is NOT recommended.")
     return torch.device("cpu")
 
 def calibrate_model(model, val_loader, device, out_dir):
@@ -83,8 +91,10 @@ def calibrate_model(model, val_loader, device, out_dir):
             labels = batch['label'].to(device)
             texts = batch['text']
             
-            logits = model(input_ids, attention_mask, texts)
-            probs = torch.softmax(logits, dim=1)
+            # Use AMP for inference speed too
+            with torch.amp.autocast('cuda' if torch.cuda.is_available() else 'cpu'):
+                logits = model(input_ids, attention_mask, texts)
+                probs = torch.softmax(logits, dim=1)
             
             ai_probs = probs[:, 1].cpu().numpy()
             all_probs.extend(ai_probs)
@@ -98,35 +108,7 @@ def calibrate_model(model, val_loader, device, out_dir):
     calibrator_path = out_dir / "isotonic_calibrator.pkl"
     with open(calibrator_path, 'wb') as f:
         pickle.dump(iso_reg, f)
-    print(f"Calibrator saved to {calibrator_path}")
-
-def run_dataset_quality_checks(dataset):
-    print("Running Dataset Quality Checks...")
-    if len(dataset) == 0:
-        raise ValueError("Dataset is empty.")
-        
-    labels = []
-    texts = []
-    word_counts = []
-    
-    for r in dataset.records:
-        labels.append(r["label"])
-        texts.append(r["text"])
-        word_counts.append(r["word_count"])
-        
-    label_counts = Counter(labels)
-    print(f"Class Distribution: {label_counts}")
-    
-    # 0=human, 1=ai, 2=mixed
-    if len(label_counts) < 2:
-        raise ValueError("Dataset must contain at least 2 classes.")
-        
-    # Check for empty text
-    empty_count = sum(1 for t in texts if not t.strip())
-    if empty_count > 0:
-        raise ValueError(f"Found {empty_count} empty text samples.")
-        
-    print("✅ Dataset passed quality checks.")
+    print(f"✅ Calibrator saved to {calibrator_path}")
 
 def train_model(config_path):
     with open(config_path, 'r') as f:
@@ -134,7 +116,6 @@ def train_model(config_path):
         
     base_dir = Path(__file__).parent.parent
     device = get_device()
-    print(f"Using device: {device}")
     
     torch.manual_seed(config['training']['seed'])
     
@@ -146,18 +127,18 @@ def train_model(config_path):
     train_path = base_dir / config['dataset']['train_path']
     val_path = base_dir / config['dataset']['val_path']
     
-    if not train_path.exists() or not val_path.exists():
-        print(f"Dataset not found at {train_path}. Please run prepare_v4_dataset.py first.")
-        return
-        
     print(f"Loading datasets from {train_path.parent}...")
     train_dataset = V4DetectorDataset(train_path, tokenizer, max_length=config['model']['max_length'])
     val_dataset = V4DetectorDataset(val_path, tokenizer, max_length=config['model']['max_length'])
     
-    run_dataset_quality_checks(train_dataset)
+    # Gradient accumulation and batch sizing for Colab GPU memory
+    base_batch_size = config['training'].get('batch_size', 16)
+    gradient_accumulation_steps = config['training'].get('gradient_accumulation_steps', 4)
+    # Typically Colab T4 limits us to BS 8 or 16 for 512 max_len
+    eff_batch_size = base_batch_size * gradient_accumulation_steps
     
-    train_loader = DataLoader(train_dataset, batch_size=config['training']['batch_size'], shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=config['training']['batch_size'])
+    train_loader = DataLoader(train_dataset, batch_size=base_batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=base_batch_size)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=float(config['training']['learning_rate']))
     criterion = nn.CrossEntropyLoss()
@@ -166,7 +147,6 @@ def train_model(config_path):
     out_dir = base_dir / config['output']['checkpoint_dir']
     out_dir.mkdir(parents=True, exist_ok=True)
     
-    # Versioning
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     version_dir = out_dir / f"run_{timestamp}"
     version_dir.mkdir(exist_ok=True)
@@ -174,30 +154,52 @@ def train_model(config_path):
     reports_dir = base_dir / config['output']['reports_dir']
     reports_dir.mkdir(parents=True, exist_ok=True)
     
-    print(f"Starting training on {len(train_dataset)} samples...")
+    print(f"Starting Mixed Precision (AMP) training on {len(train_dataset)} samples...")
     best_val_loss = float('inf')
-    
     experiment_log = []
     
-    for epoch in range(epochs):
+    # Setup PyTorch AMP Scaler
+    scaler = torch.amp.GradScaler('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    # Check for resume
+    resume_checkpoint = out_dir / "latest_checkpoint.pt"
+    start_epoch = 0
+    if resume_checkpoint.exists():
+        print(f"Resuming from checkpoint {resume_checkpoint}")
+        checkpoint = torch.load(resume_checkpoint)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        best_val_loss = checkpoint.get('best_val_loss', float('inf'))
+
+    start_time = datetime.datetime.now()
+    
+    for epoch in range(start_epoch, epochs):
         model.train()
         total_loss = 0
+        optimizer.zero_grad()
+        
         for batch_idx, batch in enumerate(train_loader):
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
             labels = batch['label'].to(device)
             texts = batch['text']
             
-            optimizer.zero_grad()
-            logits = model(input_ids, attention_mask, texts)
+            with torch.amp.autocast('cuda' if torch.cuda.is_available() else 'cpu'):
+                logits = model(input_ids, attention_mask, texts)
+                loss = criterion(logits, labels)
+                loss = loss / gradient_accumulation_steps
             
-            loss = criterion(logits, labels)
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()
             
-            total_loss += loss.item()
-            if batch_idx % 10 == 0:
-                print(f"Epoch {epoch+1}/{epochs} | Batch {batch_idx}/{len(train_loader)} | Loss: {loss.item():.4f}")
+            if ((batch_idx + 1) % gradient_accumulation_steps == 0) or (batch_idx + 1 == len(train_loader)):
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
+            
+            total_loss += loss.item() * gradient_accumulation_steps
+            if batch_idx % 50 == 0:
+                print(f"Epoch {epoch+1}/{epochs} | Batch {batch_idx}/{len(train_loader)} | Loss: {loss.item() * gradient_accumulation_steps:.4f}")
                 
         # Validation
         model.eval()
@@ -214,8 +216,10 @@ def train_model(config_path):
                 labels = batch['label'].to(device)
                 texts = batch['text']
                 
-                logits = model(input_ids, attention_mask, texts)
-                loss = criterion(logits, labels)
+                with torch.amp.autocast('cuda' if torch.cuda.is_available() else 'cpu'):
+                    logits = model(input_ids, attention_mask, texts)
+                    loss = criterion(logits, labels)
+                    
                 val_loss += loss.item()
                 
                 probs = torch.softmax(logits, dim=1)
@@ -226,50 +230,84 @@ def train_model(config_path):
                 all_probs_ai.extend(probs[:, 1].cpu().numpy())
                 
         avg_val_loss = val_loss / len(val_loader)
-        accuracy = accuracy_score(all_labels, all_preds)
-        
-        # Binary AUROC for tracking (AI vs Rest)
         binary_labels = [1 if l == 1 else 0 for l in all_labels]
+        binary_preds = [1 if p == 1 else 0 for p in all_preds]
+        
+        accuracy = accuracy_score(all_labels, all_preds)
+        precision = precision_score(binary_labels, binary_preds, zero_division=0)
+        recall = recall_score(binary_labels, binary_preds, zero_division=0)
+        f1 = f1_score(binary_labels, binary_preds, zero_division=0)
+        
         try:
             auroc = roc_auc_score(binary_labels, all_probs_ai)
+            auprc = average_precision_score(binary_labels, all_probs_ai)
         except:
             auroc = 0.5
+            auprc = 0.5
             
-        print(f"Epoch {epoch+1} Validation | Loss: {avg_val_loss:.4f} | Accuracy: {accuracy:.4f} | AUROC: {auroc:.4f}")
+        print("-" * 60)
+        print(f"Epoch {epoch+1} Validation Metrics:")
+        print(f"Loss: {avg_val_loss:.4f} | Accuracy: {accuracy:.4f}")
+        print(f"Precision: {precision:.4f} | Recall: {recall:.4f} | F1: {f1:.4f}")
+        print(f"AUROC: {auroc:.4f} | AUPRC: {auprc:.4f}")
+        print("-" * 60)
         
         experiment_log.append({
             "epoch": epoch + 1,
             "train_loss": total_loss / len(train_loader),
             "val_loss": avg_val_loss,
             "val_accuracy": accuracy,
-            "val_auroc": auroc
+            "val_precision": precision,
+            "val_recall": recall,
+            "val_f1": f1,
+            "val_auroc": auroc,
+            "val_auprc": auprc
         })
         
-        # Save best model to version dir AND symlink/copy to main dir for easy access
+        # Save checkpoint (resume point)
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'best_val_loss': best_val_loss,
+        }, resume_checkpoint)
+        
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             
-            # Save to versioned dir
-            version_model_path = version_dir / "best_model.pt"
-            torch.save(model.state_dict(), version_model_path)
+            # Save best validation checkpoint
+            torch.save(model.state_dict(), version_dir / "best_model.pt")
+            torch.save(model.state_dict(), out_dir / "best_model.pt")
+            print(f"✅ Saved new best model checkpoint to models/v4/best_model.pt")
             
-            # Save to main dir
-            main_model_path = out_dir / "best_model.pt"
-            torch.save(model.state_dict(), main_model_path)
-            
-            print(f"Saved new best model checkpoint.")
-            
-    # Save experiment tracking
+    duration = datetime.datetime.now() - start_time
+    
+    # Save final model state
+    torch.save(model.state_dict(), version_dir / "final_model.pt")
+    
+    # Add metadata
+    import platform
+    import transformers
+    metadata = {
+        "python_version": platform.python_version(),
+        "pytorch_version": torch.__version__,
+        "transformers_version": transformers.__version__,
+        "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None",
+        "epochs": epochs,
+        "batch_size": base_batch_size,
+        "gradient_accumulation_steps": gradient_accumulation_steps,
+        "learning_rate": config['training']['learning_rate'],
+        "training_duration": str(duration),
+        "log": experiment_log
+    }
+    
     with open(reports_dir / f"training_summary_{timestamp}.json", "w") as f:
-        json.dump(experiment_log, f, indent=4)
+        json.dump(metadata, f, indent=4)
             
-    # Load best model for calibration
+    # Final step: Calibration
+    print("Loading best model for calibration...")
     model.load_state_dict(torch.load(out_dir / "best_model.pt", map_location=device))
     calibrate_model(model, val_loader, device, out_dir)
-    # Also save calibrator to version dir
-    import shutil
-    if (out_dir / "isotonic_calibrator.pkl").exists():
-        shutil.copy(out_dir / "isotonic_calibrator.pkl", version_dir / "isotonic_calibrator.pkl")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

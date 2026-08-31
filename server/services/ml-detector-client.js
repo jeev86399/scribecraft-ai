@@ -1,23 +1,19 @@
 import crypto from 'crypto';
 
-// Basic cache for ML inference results to avoid hammering the Python service
 const inferenceCache = new Map();
-
-// V2 State Management
 let mlDetectorState = 'ACTIVE';
 let lastHealthCheck = 0;
-const HEALTH_CACHE_TTL = 30000; // 30 seconds
+const HEALTH_CACHE_TTL = 30000; 
 
 function generateHash(text, models) {
   return crypto.createHash('sha256').update(text + models.join(',')).digest('hex');
 }
 
-export async function detectAIWithML(text, models = ['roberta_base']) {
+export async function detectAIWithML(text, models = ['ensemble_v4']) {
   if (!text || text.trim().split(/\s+/).length < 15) {
     return { available: false, reason: 'insufficient_text' };
   }
 
-  // V2 Fast Fail if known down
   if (mlDetectorState === 'DISABLED' || mlDetectorState === 'TEMPORARILY_UNAVAILABLE') {
      if (Date.now() - lastHealthCheck < HEALTH_CACHE_TTL) {
          return { available: false, state: mlDetectorState, reason: 'service_unavailable' };
@@ -34,7 +30,7 @@ export async function detectAIWithML(text, models = ['roberta_base']) {
     const endpoint = `${ML_URL.replace(/\/$/, '')}/detect`;
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // Increased timeout to 30s
+    const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s for CPU
     
     let data;
     const response = await fetch(endpoint, {
@@ -48,10 +44,9 @@ export async function detectAIWithML(text, models = ['roberta_base']) {
     if (!response.ok) throw new Error('ML API error');
     data = await response.json();
 
-    // Strict validation: Reject any malformed data that could be interpreted as a mock
-    if (data && data.results) {
+    if (data && data.status === "success" && data.results) {
       for (const model of models) {
-        if (data.results[model] && typeof data.results[model].calibrated_probability !== 'number') {
+        if (data.results[model] && typeof data.results[model].ai_probability !== 'number') {
            throw new Error('Invalid probability received from ML service');
         }
       }
@@ -59,12 +54,13 @@ export async function detectAIWithML(text, models = ['roberta_base']) {
        throw new Error('Malformed response from ML service');
     }
 
-    // V2: Add calibration state metadata to output
     const processedResults = {};
     for (const model of models) {
         processedResults[model] = {
-            probability: data.results[model].calibrated_probability, // NOT confidence
+            probability: data.results[model].estimated_ai_content || data.results[model].ai_probability, 
             confidence: data.results[model].confidence || 50,
+            classification: data.results[model].classification || 'Unknown',
+            evidenceTier: data.results[model].evidence_tier || 'Unknown',
             calibrationStatus: 'calibrated',
             modelAvailable: true
         };
@@ -79,7 +75,6 @@ export async function detectAIWithML(text, models = ['roberta_base']) {
 
     inferenceCache.set(hash, resultData);
     
-    // keep cache small
     if (inferenceCache.size > 100) {
       const firstKey = inferenceCache.keys().next().value;
       inferenceCache.delete(firstKey);
@@ -91,76 +86,12 @@ export async function detectAIWithML(text, models = ['roberta_base']) {
   } catch (error) {
     console.error(`Local ML Inference Failed (${error.name}: ${error.message}). Checking for Hugging Face fallback...`);
     
-    // V2.1: Hugging Face Serverless Fallback (Method 2)
-    if (process.env.HF_API_KEY) {
-      try {
-        console.log("Attempting Hugging Face Serverless Inference...");
-        const hfController = new AbortController();
-        const hfTimeoutId = setTimeout(() => hfController.abort(), 5000);
-        
-        const hfResponse = await fetch(
-          "https://api-inference.huggingface.co/models/desklib/ai-text-detector-v1.01",
-          {
-            headers: { 
-              Authorization: `Bearer ${process.env.HF_API_KEY}`,
-              "Content-Type": "application/json" 
-            },
-            method: "POST",
-            body: JSON.stringify({ inputs: text }),
-            signal: hfController.signal
-          }
-        );
-        clearTimeout(hfTimeoutId);
-
-        if (hfResponse.ok) {
-           const hfData = await hfResponse.json();
-           // HF returns [[{"label": "Fake", "score": 0.98}, {"label": "Real", "score": 0.02}]]
-           if (Array.isArray(hfData) && Array.isArray(hfData[0])) {
-               let aiScore = 0;
-               const fakeLabel = hfData[0].find(l => l.label.toLowerCase().includes('fake') || l.label.toLowerCase().includes('ai'));
-               if (fakeLabel) {
-                   aiScore = fakeLabel.score * 100;
-               } else {
-                   // Fallback logic if labels change
-                   aiScore = hfData[0][0].score * 100; 
-               }
-
-               const processedResults = {};
-               for (const model of models) {
-                   processedResults[model] = {
-                       probability: aiScore,
-                       confidence: 90, // High confidence since it's a DeBERTa model
-                       calibrationStatus: 'calibrated',
-                       modelAvailable: true
-                   };
-               }
-
-               const resultData = {
-                   available: true,
-                   state: 'HF_FALLBACK_ACTIVE',
-                   results: processedResults
-               };
-
-               inferenceCache.set(hash, resultData);
-               mlDetectorState = 'ACTIVE';
-               lastHealthCheck = Date.now();
-               return resultData;
-           }
-        }
-      } catch (hfError) {
-         console.error(`HF Fallback also failed: ${hfError.message}`);
-      }
-    }
-
     mlDetectorState = 'TEMPORARILY_UNAVAILABLE';
     lastHealthCheck = Date.now();
     return { available: false, state: mlDetectorState, fallbackMode: true, reason: error.message };
   }
 }
 
-/**
- * Ping the ML Detector to see if it is online.
- */
 export async function pingMLDetector() {
   if (Date.now() - lastHealthCheck < HEALTH_CACHE_TTL && mlDetectorState === 'ACTIVE') {
       return true;

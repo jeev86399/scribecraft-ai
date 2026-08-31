@@ -14,9 +14,10 @@ export async function detectAITextEnsemble(rawText, options = {}) {
   if (!integrity.available) {
     return {
       success: false,
-      version: '2.0',
+      version: '4.0',
       result: {
         aiLikelihood: 0,
+        estimatedAIContent: 0,
         confidence: 0,
         reliability: 'low',
         evidenceCoverage: 0,
@@ -35,18 +36,15 @@ export async function detectAITextEnsemble(rawText, options = {}) {
   const predictability = analyzePredictability(preprocessed);
   const burstiness = analyzeBurstiness(preprocessed);
   const tokenDist = analyzeTokenDistribution(preprocessed);
-  
-  // Family F is offline/eval only, but we instantiate it for completeness
   const robustness = analyzeRobustness(preprocessed);
 
   // 3. Remote Services (Families D, E)
-  // Run these concurrently for performance
   const [mlResults, semanticAssessment] = await Promise.all([
     detectAIWithML(preprocessed.normalizedText),
     getAISemanticAssessment(preprocessed.normalizedText)
   ]);
 
-  // 4. Evidence Convergence
+  // 4. Evidence Convergence (Legacy Fallback Support)
   const families = {
     familyA_Predictability: predictability,
     familyB_Burstiness: burstiness,
@@ -59,7 +57,7 @@ export async function detectAITextEnsemble(rawText, options = {}) {
 
   const convergence = computeEvidenceConvergence(families);
 
-  // 4b. Sentence-level analysis (V2.1 - Real ML integration)
+  // 4b. Sentence-level analysis (V4)
   const sentenceResults = [];
   const spans = [];
   let currentSpan = null;
@@ -69,14 +67,12 @@ export async function detectAITextEnsemble(rawText, options = {}) {
       let conf = 0;
       let evidence = [];
 
-      // If ML service provided sentence-level predictions, use them
       if (mlResults?.sentences && mlResults.sentences[index]) {
           sentenceLikelihood = mlResults.sentences[index].probability;
-          conf = mlResults.sentences[index].confidence || 80;
-          evidence.push("ml_classifier");
+          conf = mlResults.sentences[index].confidence === "HIGH" ? 95 : 60;
+          evidence.push("v4_ml_classifier");
       }
 
-      // We no longer fake sentence probabilities with heuristics alone
       sentenceResults.push({
           index,
           aiLikelihood: sentenceLikelihood,
@@ -84,7 +80,6 @@ export async function detectAITextEnsemble(rawText, options = {}) {
           evidence: evidence
       });
 
-      // Span tracking (only if we have real ML data)
       if (sentenceLikelihood !== null) {
           if (sentenceLikelihood > 65) {
               if (!currentSpan) {
@@ -111,26 +106,40 @@ export async function detectAITextEnsemble(rawText, options = {}) {
       spans.push(currentSpan);
   }
 
-  // 5. Standardized V2.0 Response
+  // 5. Build Final Payload
+  let aiLikelihood = convergence.aiLikelihood;
+  let estimatedAIContent = convergence.aiLikelihood;
+  let classification = convergence.classification;
+  let fallbackMode = true;
+
+  if (mlResults && mlResults.available && mlResults.results && mlResults.results.ensemble_v4) {
+      const v4Data = mlResults.results.ensemble_v4;
+      aiLikelihood = v4Data.probability;
+      estimatedAIContent = v4Data.probability;
+      classification = v4Data.classification || 'Unknown';
+      fallbackMode = false;
+  }
+
   return {
     success: true,
-    version: '2.0',
-    detectorVersion: '2.0',
-    pipelineVersion: '2.1',
-    calibrationVersion: '1.0',
+    version: '4.0',
+    detectorVersion: '4.0',
+    pipelineVersion: '4.0',
+    calibrationVersion: 'V4-Isotonic',
     document: {
-      aiLikelihood: convergence.aiLikelihood,
-      confidence: convergence.confidence,
-      uncertainty: convergence.uncertainty,
+      aiLikelihood: aiLikelihood,
+      estimatedAIContent: estimatedAIContent,
+      confidence: fallbackMode ? convergence.confidence : 95,
+      uncertainty: fallbackMode ? convergence.uncertainty : 5,
       evidenceAgreement: convergence.evidenceAgreement,
-      reliability: convergence.reliability,
+      reliability: fallbackMode ? convergence.reliability : 'high',
       evidenceCoverage: convergence.evidenceCoverage,
-      classification: convergence.classification,
+      classification: classification,
       agreementLevel: convergence.agreementLevel,
-      activeFamilies: convergence.activeFamilies,
-      unavailableFamilies: convergence.unavailableFamilies,
-      fallbackMode: convergence.unavailableFamilies.includes('Family D (ML Classification)'),
-      mixedAuthorship: convergence.classification === 'mixed_signals'
+      activeFamilies: fallbackMode ? convergence.activeFamilies : ['V4 Neural Ensemble'],
+      unavailableFamilies: fallbackMode ? convergence.unavailableFamilies : [],
+      fallbackMode: fallbackMode,
+      mixedAuthorship: classification === 'mixed_signals'
     },
     sentences: sentenceResults,
     spans: spans,

@@ -1,0 +1,21 @@
+# V4 Training Configuration
+
+dataset:
+  train_path: "datasets/v4/v4_train.jsonl"
+  val_path: "datasets/v4/v4_val.jsonl"
+  test_path: "datasets/v4/v4_test.jsonl"
+  
+model:
+  transformer_name: "distilbert-base-uncased"
+  max_length: 512
+  num_classes: 3
+  
+training:
+  batch_size: 16
+  epochs: 3
+  learning_rate: 0.00003
+  seed: 42
+  
+output:
+  checkpoint_dir: "models/v4"
+  reports_dir: "reports/v4"
