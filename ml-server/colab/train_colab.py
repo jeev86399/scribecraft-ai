@@ -15,6 +15,11 @@ from collections import Counter
 from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, precision_score, recall_score, average_precision_score
 
+if not torch.cuda.is_available():
+    print("❌ ERROR: CUDA is unavailable. This script requires a GPU.")
+    print("Please go to 'Runtime > Change runtime type' in Colab and select 'T4 GPU'.")
+    sys.exit(1)
+
 # Add parent directory to path to import models
 sys.path.append(str(Path(__file__).parent.parent))
 from models.ensemble import DetectorEnsemble
