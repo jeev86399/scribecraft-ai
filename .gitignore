@@ -8,3 +8,10 @@ ml-server/checkpoints/
 ml-server/datasets/processed/
 ml-server/venv311/
 ml-server-v4.zip
+
+ml-server/venv*/
+ml-server/**/venv*/
+ml-server/__pycache__/
+ml-server/**/__pycache__/
+ml-server/models/v4/*.pt
+ml-server/models/v4/*.pkl
